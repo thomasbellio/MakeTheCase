@@ -1,0 +1,89 @@
+erDiagram
+  DOCUMENT ||--o{ SPAN : "segmented into"
+  DOCUMENT ||--o{ REVISION : "versioned by"
+  DOCUMENT ||--o{ CLAIM : "contains"
+  CLAIM ||--o{ OCCURRENCE : "appears as"
+  SPAN ||--o{ OCCURRENCE : "anchors"
+  INFERENCE ||--|{ INFERENCE_PREMISE : "has premises"
+  CLAIM ||--o{ INFERENCE_PREMISE : "serves as premise"
+  CLAIM ||--o{ INFERENCE : "concluded by"
+  CLAIM ||--o{ RELATION : "is source of"
+  CLAIM |o--o{ RELATION : "is target of"
+  INFERENCE |o--o{ RELATION : "is target of"
+  FINDING }o--o{ CLAIM : "about"
+  FINDING }o--o{ INFERENCE : "about"
+  REVISION ||--o{ FINDING : "produced"
+
+  DOCUMENT {
+    uuid id PK
+    text source_text
+    string role "own_brief | opposing_brief | article | other"
+    timestamp created_at
+  }
+
+  SPAN {
+    uuid id PK
+    uuid document_id FK
+    int char_start
+    int char_end
+    string function "argumentative | narrative | descriptive | rhetorical"
+    float function_confidence
+  }
+
+  CLAIM {
+    uuid id PK
+    uuid document_id FK
+    text canonical_text
+    string kind "factual | legal_rule | normative | definitional | causal | predictive"
+    string modality "asserted | probable | possible | hedged"
+    string origin "stated | inferred | user_added"
+    string authority "citation, for legal_rule claims"
+    float confidence
+    bool is_thesis
+  }
+
+  OCCURRENCE {
+    uuid claim_id FK
+    uuid span_id FK
+    text surface_text "author's original wording"
+  }
+
+  INFERENCE {
+    uuid id PK
+    uuid conclusion_claim_id FK
+    string scheme "deductive | causal | analogical | abductive | statistical"
+    string support "linked | convergent"
+    string origin "stated | inferred | user_added"
+    float confidence
+  }
+
+  INFERENCE_PREMISE {
+    uuid inference_id FK
+    uuid claim_id FK
+    string origin "stated | inferred | user_added"
+  }
+
+  RELATION {
+    uuid id PK
+    uuid source_claim_id FK
+    uuid target_claim_id FK "nullable"
+    uuid target_inference_id FK "nullable"
+    string type "rebut | undermine | undercut | qualify"
+  }
+
+  FINDING {
+    uuid id PK
+    uuid revision_id FK
+    string kind "invalid_step | circularity | unsupported_claim | load_bearing | implicit_premise"
+    string severity "info | warning | critical"
+    text explanation
+    string produced_by "analyzer or model version"
+  }
+
+  REVISION {
+    uuid id PK
+    uuid document_id FK
+    uuid parent_revision_id FK "nullable"
+    string author "system | user id"
+    timestamp created_at
+  }
