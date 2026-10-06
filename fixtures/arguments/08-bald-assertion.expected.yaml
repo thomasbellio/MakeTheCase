@@ -19,7 +19,7 @@ soft:
     - Section 9.4 permits a variance for a practical difficulty unique to the property and not created by the owner
     - The rear half of the lot slopes at 30 percent (survey)
     - An addition within the setback would require retaining walls costing more than the addition (architect)
-    - 'Unsupported: no other lot on Ridgeway Lane has a comparable slope'
+    - "Unsupported: no other lot on Ridgeway Lane has a comparable slope"
     - The slope predates the Hendersons' 2015 purchase (plat, deed)
   unsupported_claim: >
     Exactly one unsupported_claim, on "no other lot on Ridgeway Lane has a
@@ -27,6 +27,5 @@ soft:
     must also be load-bearing. Every other factual claim cites the record
     and must not be flagged.
 notes: >
-  Depends on the planned citation-aware unsupported_claim rule (citations
-  allowed on factual claims; only uncited load-bearing facts are flagged).
-  Under the current rule every fact here would be flagged.
+  Exercises the citation-aware unsupported_claim rule (CLAUDE.md §7.3):
+  only uncited, load-bearing, author-attributed facts are flagged.

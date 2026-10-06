@@ -36,5 +36,5 @@ notes: >
   Every premise a lawyer would need is stated, including the arithmetic
   (45 days > 21 days) and that the Act governs the tenancy. If the system
   adds an implicit premise here, it is over-reconstructing. Every factual
-  claim carries a record citation; see the note in fixture 08 regarding how
-  unsupported_claim should treat cited facts.
+  claim carries a record citation, so unsupported_claim must not fire
+  (CLAUDE.md §7.3).

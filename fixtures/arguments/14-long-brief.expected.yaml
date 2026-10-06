@@ -1,0 +1,86 @@
+id: 14-long-brief
+purpose: >
+  A complete, realistic summary judgment brief (~2,300 words) with several
+  of the behaviors from fixtures 02-10 embedded in one document. Tests that
+  the pipeline handles a full brief end to end without chunking and that
+  each embedded behavior still surfaces when mixed with the others.
+expected_status: completed
+thesis: >
+  The Court should grant summary judgment for Brightwater, declaring that it
+  validly exercised its renewal option and enjoining Pemberton from leasing
+  Suite 110 to another tenant
+hard:
+  findings_present:
+    - kind: implicit_premise
+      severity: warning
+    - kind: unsupported_claim
+      severity: warning
+    - kind: load_bearing
+  findings_absent:
+    - circularity
+    - invalid_step
+  unsupported_claim_count: { min: 1, max: 1 }
+  relations_present: [rebut, undermine, undercut]
+  max_occurrences_for_single_claim: { min: 5 }
+  claims_with_modality_not_asserted: { min: 3 }
+  spans_with_function:
+    narrative: { min: 10 }
+    argumentative: { min: 25 }
+  claim_count: { min: 25, max: 60 }
+soft:
+  structure: >
+    The thesis is supported by two intermediate conclusions: (1) Brightwater
+    validly exercised its renewal option, and (2) a permanent injunction is
+    warranted. (1) rests on a Section 4.2 rule plus two further intermediates:
+    the notice was timely, and Brightwater was not in Default on May 2.
+  embedded_behaviors:
+    alternative_routes: >
+      "The notice was timely" has two independent routes: delivery on May 2
+      under Section 22 (route A.1), and waiver by conduct (route A.2). Claims
+      used only in route A.2 must not be load-bearing.
+    implicit_premise: >
+      Route A.2 concludes waiver from "Pemberton's conduct treated the renewal
+      as effective" without stating any rule that such conduct waives a
+      timeliness objection. Expected inferred premise: a landlord that treats
+      a renewal as effective after receiving notice waives objections to its
+      timeliness. Severity warning, not critical, because route A.1 makes it
+      non-load-bearing.
+    unsupported_claim: >
+      "Brightwater has paid every installment of rent on time" (fact 17) has
+      no record citation. The argument section cites "Undisputed Fact ¶ 17",
+      but that is an internal cross-reference to an uncited paragraph, not a
+      record citation. It is load-bearing via "no monetary Default", so it
+      must be the single unsupported_claim. All other facts cite the record
+      directly or through a cross-referenced paragraph that does.
+    restated_claim: >
+      "Brightwater delivered its renewal notice on May 2" appears at least
+      seven times (introduction, Part I.A.1 several times, Part I.A summary,
+      Conclusion) and should be merged into one claim. The courier receipt
+      and Ms. Whitcomb's testimony are evidence for it, not restatements.
+    counterarguments: >
+      Opposing claims (attributed to Pemberton): the notice was late /
+      delivered May 6; Brightwater was in Default because of the sign.
+      Expected relations: rebut from each opposing claim to the claim it
+      contradicts ("notice timely", "not in Default"); undermine from "the
+      property manager approved the sign in writing" against "the sign was
+      installed without consent"; undercut from the Section 19.1 notice-and-
+      cure argument against the inference "unconsented sign -> Default";
+      undercut from "Section 22 makes the signed receipt the measure of
+      delivery" against the inference "mail log says May 6 -> delivered May 6".
+    hedged_claims: >
+      Part II: Brightwater would likely suffer irreparable harm; it may be
+      unable to recover possession; relocation would probably cost it a
+      substantial share of members; the loss would likely be impossible to
+      fully compensate. These must keep non-asserted modality.
+  background_claims: >
+    Standard of Review statements and the Procedural History are background.
+    Rule 56(a) may be wired as a premise of the thesis or left unconnected;
+    either is acceptable, but unconnected background claims must not cause
+    validation to fail the run.
+notes: >
+  Planned length was ~5,000 words; this brief is ~2,300, which is a realistic
+  length for a focused motion and still well beyond any of the targeted
+  fixtures. If a true length stress test is needed later, add a separate
+  fixture rather than padding this one. Exercises claim citations (with
+  cross-reference resolution), attribution, alternative routes, and
+  unconnected background claims (CLAUDE.md §§6, 7.3, 8.3).

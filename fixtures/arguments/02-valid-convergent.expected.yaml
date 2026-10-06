@@ -24,9 +24,9 @@ soft:
     - June 29 was a legal holiday, extending the deadline to June 30 under Rule 4(c)
     - Rule 6 lets the Chair extend deadlines; the Chair extended to July 15
   structure: >
-    Three separate inferences (or one convergent inference) conclude that
-    the appeal was timely. Each route is internally a linked rule-application
-    step. "Motion should be denied" may be modeled as the thesis with
+    Three separate inferences each conclude that the appeal was timely
+    (alternative routes of support). Each is a rule-application step whose
+    premises are jointly required. "Motion should be denied" may be modeled as the thesis with
     "appeal was timely" as an intermediate conclusion; either is acceptable.
   load_bearing: >
     The filing date (June 30) is shared by all three routes, so it should be

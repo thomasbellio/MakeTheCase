@@ -15,7 +15,7 @@ hard:
 soft:
   key_claims:
     - Section 14 makes final payment due once the work is certified by the City Building Inspector
-    - 'Code § 3.1: certified work is deemed code-compliant (certified -> compliant)'
+    - "Code § 3.1: certified work is deemed code-compliant (certified -> compliant)"
     - Halvorsen's work is fully code-compliant (engineer's report)
     - "Intermediate: Halvorsen's work has the required certification"
   invalid_step: >
@@ -31,5 +31,4 @@ notes: >
   "repairing" the fallacy by adding the converse ("only certified work is
   compliant") as an implicit premise, or formalizing § 3.1 as a
   biconditional. When the text states a conditional's direction explicitly,
-  reconstruction must use the stated direction. This policy should be
-  written into the reconstruction prompt guidance in CLAUDE.md.
+  reconstruction must use the stated direction (CLAUDE.md §8.3, rule 3).

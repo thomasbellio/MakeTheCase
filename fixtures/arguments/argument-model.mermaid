@@ -1,0 +1,124 @@
+erDiagram
+  DOCUMENT ||--o{ SPAN : "segmented into"
+  DOCUMENT ||--o{ ANALYSIS_RUN : "analyzed by"
+  DOCUMENT ||--o{ REVISION : "versioned by"
+  ANALYSIS_RUN ||--o{ RUN_EVENT : "emits"
+  ANALYSIS_RUN |o--o| REVISION : "produces"
+  REVISION ||--o{ CLAIM : "contains"
+  REVISION ||--o{ INFERENCE : "contains"
+  REVISION ||--o{ RELATION : "contains"
+  REVISION ||--o{ FINDING : "contains"
+  CLAIM ||--o{ OCCURRENCE : "appears as"
+  SPAN ||--o{ OCCURRENCE : "anchors"
+  INFERENCE ||--|{ INFERENCE_PREMISE : "has premises"
+  CLAIM ||--o{ INFERENCE_PREMISE : "serves as premise"
+  CLAIM ||--o{ INFERENCE : "concluded by"
+  CLAIM ||--o{ RELATION : "is source of"
+  CLAIM |o--o{ RELATION : "is target of"
+  INFERENCE |o--o{ RELATION : "is target of"
+  FINDING }o--o{ CLAIM : "about"
+  FINDING }o--o{ INFERENCE : "about"
+
+  DOCUMENT {
+    uuid id PK
+    text source_text "markdown, immutable once created"
+    string title
+    string role "own_brief | opposing_brief | article | other"
+    timestamp created_at
+  }
+
+  SPAN {
+    uuid id PK
+    uuid document_id FK
+    int ordinal
+    int char_start
+    int char_end
+    bool is_heading
+    string function "argumentative | narrative | descriptive | instructional | rhetorical | unclassified"
+    float function_confidence
+  }
+
+  ANALYSIS_RUN {
+    uuid id PK
+    uuid document_id FK
+    uuid revision_id FK "nullable until complete"
+    string status "queued | running | completed | not_an_argument | failed"
+    string current_stage
+    text summary "genre summary, required when not_an_argument"
+    json model_config "provider, model and prompt version per stage"
+    text error
+    timestamp started_at
+    timestamp finished_at
+  }
+
+  RUN_EVENT {
+    uuid id PK
+    uuid run_id FK
+    int sequence
+    string stage
+    string type "stage_started | stage_progress | stage_completed | validation_retry | run_failed"
+    json payload
+    timestamp created_at
+  }
+
+  REVISION {
+    uuid id PK
+    uuid document_id FK
+    uuid parent_revision_id FK "nullable"
+    string author "system in v1; user id later"
+    timestamp created_at
+  }
+
+  CLAIM {
+    uuid id PK
+    uuid revision_id FK
+    text canonical_text
+    string kind "factual | legal_rule | normative | definitional | causal | predictive"
+    string modality "asserted | probable | possible | hedged"
+    string origin "stated | inferred | user_added"
+    string attribution "author | opposing | third_party"
+    text citation "nullable; record or legal authority, cross-references resolved"
+    float confidence
+    bool is_thesis
+  }
+
+  OCCURRENCE {
+    uuid claim_id FK
+    uuid span_id FK
+    text surface_text "author's original wording"
+  }
+
+  INFERENCE {
+    uuid id PK
+    uuid revision_id FK
+    uuid conclusion_claim_id FK
+    string scheme "deductive | causal | analogical | abductive | statistical"
+    string origin "stated | inferred | user_added"
+    string attribution "author | opposing | third_party"
+    json formalization "propositional form; deductive steps only"
+    float confidence
+  }
+
+  INFERENCE_PREMISE {
+    uuid inference_id FK
+    uuid claim_id FK
+    string origin "stated | inferred | user_added"
+  }
+
+  RELATION {
+    uuid id PK
+    uuid revision_id FK
+    uuid source_claim_id FK
+    uuid target_claim_id FK "nullable"
+    uuid target_inference_id FK "nullable"
+    string type "rebut | undermine | undercut | qualify"
+  }
+
+  FINDING {
+    uuid id PK
+    uuid revision_id FK
+    string kind "invalid_step | unchecked_step | circularity | unsupported_claim | load_bearing | implicit_premise | unconnected_claim"
+    string severity "info | warning | critical"
+    text explanation
+    string produced_by "analyzer name and version"
+  }

@@ -1,0 +1,53 @@
+id: 13-mixed-brief
+purpose: >
+  A realistic brief mixing narrative (statement of facts), procedural
+  history, and argument. Tests that classification labels sections
+  correctly, and that extraction still uses facts stated in the narrative
+  sections as premises.
+expected_status: completed
+thesis: The Board should deny the Department's motion to dismiss (the appeal is not premature)
+hard:
+  spans_with_function:
+    narrative: { min: 5 }
+    argumentative: { min: 6 }
+  claim_occurrences_in_function:
+    narrative: { min: 2 }
+  findings_absent:
+    - circularity
+    - invalid_step
+    - unsupported_claim
+  relations_present: [rebut]
+  claim_count: { min: 8, max: 16 }
+soft:
+  classification: >
+    Statement of Facts and Procedural History spans should be narrative or
+    descriptive. Argument-section spans should be argumentative. Point
+    headings ("I. The Department's silence was a denial under Section 5(c).")
+    state conclusions and should be classified argumentative; plain section
+    headings ("Statement of Facts") should not.
+  key_claims:
+    - Section 5(c) deems a request denied if the agency fails to respond within ten business days
+    - The Department received the request on March 3
+    - Ten business days after March 3 was March 17
+    - "Section 2(f) defines a response as production, a written denial, or a written extension notice"
+    - The March 4 email only acknowledged receipt and assigned a tracking number
+    - The Department produced nothing, denied nothing, and extended nothing
+    - "Intermediate: the request was deemed denied on March 17"
+    - Section 7(a) permits appeal of a deemed denial
+    - Ms. Rivera appealed on April 2
+    - "Opposing: the March 4 email was a response, so the request remained pending"
+  occurrences: >
+    "No production, denial, or extension" and "request received March 3"
+    should have occurrences in both the Statement of Facts and the Argument.
+    The appeal date (April 2) appears only in Procedural History and the
+    Argument.
+  attribution: >
+    The Department's position (the March 4 email was a response) must be
+    attributed to the opposing party and connected to the thesis by a
+    rebut relation; the Section 2(f) definition and the description of the
+    email undermine it.
+notes: >
+  The key design point this fixture exercises: classification informs
+  extraction but must not filter it. Facts the argument depends on are
+  often stated only, or first, in narrative sections, and the argument
+  section refers back to them ("As set out in the Statement of Facts").

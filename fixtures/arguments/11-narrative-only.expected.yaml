@@ -1,0 +1,18 @@
+id: 11-narrative-only
+purpose: >
+  Pure fiction with no argument. Tests the gate's non-argument exit.
+expected_status: not_an_argument
+thesis: null
+hard:
+  argument_graph: absent
+  spans_with_function:
+    argumentative: { max: 0 }
+    narrative: { min: 8 }
+soft:
+  summary: >
+    The run summary should describe the text as a short fictional narrative
+    (a story about a lighthouse keeper) that does not argue for a position.
+notes: >
+  Causal sequences within a story ("she rang the bell ... the boat came
+  about") must not be mistaken for causal arguments. The heading is a story
+  title, not a point heading.

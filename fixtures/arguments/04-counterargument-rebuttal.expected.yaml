@@ -20,12 +20,12 @@ soft:
   key_claims:
     - Section 2 covers sudden and accidental discharge from within a plumbing system
     - A supply line under the kitchen sink burst on February 9
-    - 'Opponent: the flood exclusion in Section 5(d) bars coverage'
-    - 'Opponent: because water accumulated in the basement, the loss was flooding'
+    - "Opponent: the flood exclusion in Section 5(d) bars coverage"
+    - "Opponent: because water accumulated in the basement, the loss was flooding"
     - Section 5(d) defines flood as water originating outside the dwelling
     - All the water came from the burst supply line inside the house
   relations:
-    - 'rebut: the flood-exclusion claim attacks the thesis'
+    - "rebut: the flood-exclusion claim attacks the thesis"
     - "undermine: 'all water came from inside' attacks the opponent's premise that the water was flood water"
     - "undercut: 'flood is defined by source, not location' attacks the inference from 'water accumulated in the basement' to 'it was a flood'"
   attribution: >
@@ -33,7 +33,6 @@ soft:
     They should appear only as sources of attack relations, and must not
     contribute support to the thesis in the load-bearing analysis.
 notes: >
-  The current schema has no field distinguishing claims the author asserts
-  from claims the author reports on someone else's behalf. This fixture will
-  fail the attribution expectation until that is added (see CLAUDE.md
-  follow-ups).
+  Exercises claim and inference attribution (CLAUDE.md §6). The insurer's
+  inference from "water accumulated in the basement" to "it was a flood" is
+  attributed to the opposing party and is the target of the undercut.

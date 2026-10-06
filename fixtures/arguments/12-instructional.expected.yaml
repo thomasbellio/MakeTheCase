@@ -1,0 +1,21 @@
+id: 12-instructional
+purpose: >
+  Procedural instructions in the legal domain. Tests that imperative and
+  rule-like language ("you must", "you cannot") is not mistaken for argument.
+expected_status: not_an_argument
+thesis: null
+hard:
+  argument_graph: absent
+  spans_with_function:
+    argumentative: { max: 1 }
+soft:
+  summary: >
+    The run summary should describe the text as instructions or a
+    procedural guide for filing a small claims case, not an argument.
+notes: >
+  This is a harder gate test than 11 because it is legal in subject and
+  full of rules and consequences ("if it is larger ... you cannot later
+  sue for the rest"). A conditional consequence stated as guidance is not
+  an argument for a contested position. One borderline span may be
+  classified argumentative without failing the gate, provided the run
+  still exits as not_an_argument.
