@@ -1,0 +1,29 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "globalEnv": [
+    "NODE_ENV",
+    "DATABASE_URL",
+    "LLM_PROVIDER",
+    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
+    "LLM_MODEL_DEFAULT",
+    "LLM_MODEL_CLASSIFY",
+    "LLM_MODEL_EXTRACT",
+    "LLM_MODEL_RECONSTRUCT",
+    "MAX_DOCUMENT_CHARS",
+    "PIPELINE_MAX_VALIDATION_RETRIES"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {},
+    "typecheck": {},
+    "test": {}
+  }
+}

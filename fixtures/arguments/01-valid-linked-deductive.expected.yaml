@@ -1,0 +1,40 @@
+id: 01-valid-linked-deductive
+purpose: >
+  Happy path. A single rule-application step in which the rule, every fact
+  needed to satisfy it, and the conclusion are all stated explicitly, with
+  record citations for each fact.
+expected_status: completed
+thesis: Harlow Properties failed to comply with Section 14.2 of the Act
+hard:
+  findings_present:
+    - kind: load_bearing
+      severity: info
+  findings_absent:
+    - implicit_premise
+    - circularity
+    - invalid_step
+    - unsupported_claim
+  findings_max_severity: info
+  claim_count: { min: 5, max: 9 }
+  inference_count: { min: 1, max: 2 }
+  relations_count: { max: 0 }
+soft:
+  key_claims:
+    - The lease is a residential tenancy governed by the Act
+    - Harlow Properties is the landlord under the lease
+    - Section 14.2 requires return of the deposit or an itemized statement within 21 days of vacating
+    - Ms. Okafor vacated on March 1
+    - By April 15 Harlow had neither returned the deposit nor sent an itemized statement
+    - April 15 is more than 21 days after March 1
+  inference_schemes:
+    - deductive (rule application), linked support
+  formalization: >
+    The deductive step should receive a formalization, and the SAT check
+    should find it valid (no invalid_step).
+  implicit_premises: none expected
+notes: >
+  Every premise a lawyer would need is stated, including the arithmetic
+  (45 days > 21 days) and that the Act governs the tenancy. If the system
+  adds an implicit premise here, it is over-reconstructing. Every factual
+  claim carries a record citation; see the note in fixture 08 regarding how
+  unsupported_claim should treat cited facts.

@@ -67,3 +67,33 @@ Future versions are planned to let users attach evidence to the specific claims 
 ## Project status
 
 Make Your Case is in the early design stage. The current focus is defining how arguments are represented and how the core analysis will work. Expect things to change as the project develops.
+
+## Local development
+
+The repository is a pnpm + Turborepo monorepo. The scaffolding is in place and the
+argument analysis itself is not built yet, so the app currently serves a
+placeholder page.
+
+**Prerequisites:** Node 24 or newer (the repo pins 26 in `.nvmrc`), pnpm, and
+Docker for the local Postgres.
+
+```bash
+pnpm install
+cp .env.example .env     # defaults match the Postgres in docker-compose.yml
+pnpm db:up               # start Postgres
+pnpm dev                 # http://localhost:3000
+```
+
+Checks, all of which should pass:
+
+```bash
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm lint:boundaries     # asserts the architecture rules reject illegal imports
+pnpm format:check
+```
+
+`pnpm db:down` stops Postgres. See `AGENTS.md` for the architecture, the
+dependency rules between packages, and the phased implementation plan.

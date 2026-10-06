@@ -1,0 +1,9 @@
+{
+  "extends": "@make-your-case/config/tsconfig/library.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/__boundaries__/**"]
+}

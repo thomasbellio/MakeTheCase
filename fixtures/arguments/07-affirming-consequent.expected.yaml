@@ -1,0 +1,35 @@
+id: 07-affirming-consequent
+purpose: >
+  A formally invalid deductive step. The text states the rule
+  "certified -> compliant", establishes "compliant", and concludes
+  "certified" (affirming the consequent).
+expected_status: completed
+thesis: Final payment to Halvorsen is due
+hard:
+  findings_present:
+    - kind: invalid_step
+      severity: critical
+  findings_absent:
+    - circularity
+  claim_count: { min: 5, max: 9 }
+soft:
+  key_claims:
+    - Section 14 makes final payment due once the work is certified by the City Building Inspector
+    - 'Code § 3.1: certified work is deemed code-compliant (certified -> compliant)'
+    - Halvorsen's work is fully code-compliant (engineer's report)
+    - "Intermediate: Halvorsen's work has the required certification"
+  invalid_step: >
+    The step from "certified -> compliant" and "compliant" to "certified"
+    must be formalized with the rule in the direction the text states and
+    reported as invalid_step, with a counterexample in which the work is
+    compliant but not certified.
+  formalization: >
+    The step from "certified" and Section 14 to "final payment is due" is
+    valid and should not be flagged.
+notes: >
+  The failure mode this fixture targets is over-charitable reconstruction:
+  "repairing" the fallacy by adding the converse ("only certified work is
+  compliant") as an implicit premise, or formalizing § 3.1 as a
+  biconditional. When the text states a conditional's direction explicitly,
+  reconstruction must use the stated direction. This policy should be
+  written into the reconstruction prompt guidance in CLAUDE.md.

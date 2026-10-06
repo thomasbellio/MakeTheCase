@@ -1,0 +1,39 @@
+id: 10-hedged-language
+purpose: >
+  An argument built almost entirely on hedged claims. Tests that modality
+  is captured accurately and not flattened to certainty, and that the
+  normative thesis is distinguished from its predictive and factual support.
+expected_status: completed
+thesis: The Commission should require a supplemental traffic study
+hard:
+  findings_absent:
+    - circularity
+    - invalid_step
+    - unsupported_claim
+  claim_count: { min: 5, max: 10 }
+  claims_with_modality_not_asserted: { min: 4 }
+soft:
+  key_claims:
+    - 'possible/hedged: the study appears to have been conducted during spring break week'
+    - 'possible: holiday counts may understate peak volume by up to 20 percent'
+    - "probable: the study's peak-hour figures are probably too low"
+    - 'asserted: the study reports the intersection operates at 91 percent of capacity'
+    - 'possible: the intersection may already be at or near capacity'
+    - 'possible: Larkspur Commons might push it beyond capacity'
+    - 'normative: the Commission should require a supplemental study'
+  modality: >
+    Each hedged claim must keep a non-asserted modality, and canonical text
+    must preserve the hedge ("likely", "may", "appears"). The 91 percent
+    figure is stated without hedging and should be asserted.
+  kinds: >
+    The thesis should be kind normative. "Might push it beyond capacity"
+    should be predictive. The DOT guidance statement may be factual or
+    causal.
+  inference_schemes: >
+    The step to "figures are probably too low" is plausibly abductive or
+    statistical, not deductive, and should not be formalized.
+notes: >
+  The current findings set has no modality-mismatch finding, so this fixture
+  tests extraction fidelity rather than an analyzer. A future analyzer could
+  flag conclusions asserted more strongly than their premises allow; this
+  fixture's conclusion is appropriately hedged and should not trigger one.

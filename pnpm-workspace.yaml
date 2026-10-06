@@ -1,0 +1,27 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Shared versions live here so they cannot drift between workspaces.
+# Reference with "catalog:" in a package.json dependency range.
+catalog:
+  typescript: ^6.0.3
+  zod: ^4.6.5
+  vitest: ^5.0.3
+  '@vitest/coverage-v8': ^5.0.3
+  '@types/node': ^26.6.4
+
+# Explicit decisions on dependency build scripts. esbuild backs Vite/Vitest and
+# drizzle-kit, so it needs its install script. The rest are optional native
+# speedups pulled in transitively by Testcontainers and are not required.
+allowBuilds:
+  esbuild: true
+  cpu-features: false
+  protobufjs: false
+  ssh2: false
+
+# Written by pnpm: these were published more recently than the configured
+# minimum release age and have been reviewed as intentional pins.
+minimumReleaseAgeExclude:
+  - '@langchain/core@1.2.16'
+  - pg-boss@12.37.0

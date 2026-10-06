@@ -1,0 +1,37 @@
+id: 06-circular
+purpose: >
+  Circular reasoning. The log's reliability is supported by the summaries'
+  accuracy, and the summaries' accuracy is supported by the log's
+  reliability.
+expected_status: completed
+thesis: Coastline complied with Regulation 7.3 (and the citation should be vacated)
+hard:
+  findings_present:
+    - kind: circularity
+      severity: critical
+  findings_absent:
+    - invalid_step
+  claim_count: { min: 6, max: 11 }
+soft:
+  key_claims:
+    - Regulation 7.3 requires brake inspection at least every 90 days
+    - The log records inspections on Feb 2, Apr 28 and Jul 19
+    - 'Intermediate: the maintenance log is reliable'
+    - The log matches the monthly compliance summaries
+    - 'Intermediate: the compliance summaries are accurate'
+    - The summaries are compiled from the maintenance log
+    - 'Intermediate: the recorded inspections actually took place'
+  circularity: >
+    The cycle must include "the maintenance log is reliable" and "the
+    compliance summaries are accurate". It must be detected as a cycle in
+    the support graph, which requires extraction to record the summaries'
+    accuracy as supported by the log's reliability (not by a separate claim).
+  load_bearing: >
+    "The maintenance log is reliable" should be load-bearing. Claims within
+    the cycle have no grounding outside it, which the explanation should
+    make clear.
+notes: >
+  The circularity is spread across two paragraphs and phrased the way a
+  real brief might bury it. A failure mode to watch for is extraction
+  merging "the log is reliable" and "the summaries are accurate" into one
+  claim, which would hide the cycle.

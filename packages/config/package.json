@@ -1,0 +1,21 @@
+{
+  "name": "@make-your-case/config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./tsconfig/base.json": "./tsconfig/base.json",
+    "./tsconfig/library.json": "./tsconfig/library.json",
+    "./tsconfig/next.json": "./tsconfig/next.json",
+    "./eslint": "./eslint/index.js",
+    "./eslint/boundaries": "./eslint/boundaries.js",
+    "./vitest": "./vitest/base.js"
+  },
+  "dependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-boundaries": "^7.2.0",
+    "typescript-eslint": "^8.71.1",
+    "vitest": "catalog:"
+  }
+}

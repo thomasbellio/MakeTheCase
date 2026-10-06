@@ -1,0 +1,43 @@
+id: 02-valid-convergent
+purpose: >
+  Happy path with alternative, independent routes of support. Tests that the
+  load-bearing analysis does not flag claims that appear in only one route.
+expected_status: completed
+thesis: Corwin Bakery's appeal was timely (and the motion to dismiss should be denied)
+hard:
+  findings_present:
+    - kind: load_bearing
+      severity: info
+  findings_absent:
+    - implicit_premise
+    - circularity
+    - invalid_step
+    - unsupported_claim
+  findings_max_severity: info
+  claim_count: { min: 8, max: 15 }
+  inference_count: { min: 3, max: 6 }
+soft:
+  key_claims:
+    - Corwin filed its notice of appeal on June 30
+    - Rule 4(a) makes an appeal timely if filed within 30 days of mailing
+    - The decision was mailed June 3
+    - June 29 was a legal holiday, extending the deadline to June 30 under Rule 4(c)
+    - Rule 6 lets the Chair extend deadlines; the Chair extended to July 15
+  structure: >
+    Three separate inferences (or one convergent inference) conclude that
+    the appeal was timely. Each route is internally a linked rule-application
+    step. "Motion should be denied" may be modeled as the thesis with
+    "appeal was timely" as an intermediate conclusion; either is acceptable.
+  load_bearing: >
+    The filing date (June 30) is shared by all three routes, so it should be
+    the only factual claim flagged load-bearing for the timeliness conclusion.
+    Rules and facts used in only one route (e.g. the holiday, the Chair's
+    extension) must NOT be flagged load-bearing.
+  relations: >
+    The Department's position that the period runs from May 30 is raised and
+    accepted arguendo, not rebutted. A qualify relation is acceptable; a
+    rebut relation against the thesis is not expected.
+notes: >
+  This is the key test that convergent support is handled correctly. A naive
+  implementation that treats every premise as necessary will wrongly flag
+  every claim as load-bearing.

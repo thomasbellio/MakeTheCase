@@ -1,0 +1,39 @@
+id: 04-counterargument-rebuttal
+purpose: >
+  Happy path that raises the opposing party's argument and answers it.
+  Exercises relation extraction: the opponent's claim rebuts the thesis,
+  and the author responds with both an undermining attack (on the
+  opponent's premise) and an undercutting attack (on the opponent's
+  inference).
+expected_status: completed
+thesis: The policy covers Ms. Lin's water damage
+hard:
+  findings_absent:
+    - implicit_premise
+    - circularity
+    - invalid_step
+    - unsupported_claim
+  claim_count: { min: 7, max: 14 }
+  relations_present: [rebut]
+  relations_count: { min: 2 }
+soft:
+  key_claims:
+    - Section 2 covers sudden and accidental discharge from within a plumbing system
+    - A supply line under the kitchen sink burst on February 9
+    - 'Opponent: the flood exclusion in Section 5(d) bars coverage'
+    - 'Opponent: because water accumulated in the basement, the loss was flooding'
+    - Section 5(d) defines flood as water originating outside the dwelling
+    - All the water came from the burst supply line inside the house
+  relations:
+    - 'rebut: the flood-exclusion claim attacks the thesis'
+    - "undermine: 'all water came from inside' attacks the opponent's premise that the water was flood water"
+    - "undercut: 'flood is defined by source, not location' attacks the inference from 'water accumulated in the basement' to 'it was a flood'"
+  attribution: >
+    The opponent's claims must not be treated as premises the author asserts.
+    They should appear only as sources of attack relations, and must not
+    contribute support to the thesis in the load-bearing analysis.
+notes: >
+  The current schema has no field distinguishing claims the author asserts
+  from claims the author reports on someone else's behalf. This fixture will
+  fail the attribution expectation until that is added (see CLAUDE.md
+  follow-ups).

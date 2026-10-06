@@ -62,18 +62,18 @@ Agents must not add authentication in v1, but must:
 
 | Concern | Choice |
 |---|---|
-| Language | TypeScript, `strict: true`, ESM |
-| Monorepo | pnpm workspaces + Turborepo |
+| Language | TypeScript, `strict: true`, ESM. Pinned to `typescript@6` while `typescript-eslint` lacks TS 7 support (TS 7 ships no JS API until 7.1), so type-aware linting keeps working. |
+| Monorepo | pnpm workspaces (shared versions in a `pnpm-workspace.yaml` catalog) + Turborepo |
 | Web app | Next.js (App Router), React |
 | Database | PostgreSQL |
 | ORM | Drizzle ORM + drizzle-kit migrations |
-| Schemas / runtime validation | Zod |
+| Schemas / runtime validation | Zod v4 (note: `z.string().url()` is deprecated in favour of `z.url()`) |
 | LLM orchestration | LangGraph JS (`@langchain/langgraph`) as an explicit **workflow graph**, not a supervisor/agent pattern |
 | LLM providers | LangChain chat model integrations (e.g. `@langchain/anthropic`, `@langchain/openai`, `@langchain/aws`) behind our own provider factory |
 | Workflow checkpointing | `@langchain/langgraph-checkpoint-postgres` |
 | Background jobs | pg-boss (Postgres-backed queue) |
 | Graph algorithms | graphology |
-| Propositional validity | `logic-solver` (SAT) |
+| Propositional validity | In-house truth-table entailment checker, `packages/analysis/src/logic/`. (`logic-solver` was the original choice but has been unmaintained since 2016. Formalizations have a handful of atoms, so enumerating 2^n assignments is instant, needs no dependency, keeps the analysis layer pure, and yields the counterexample an `invalid_step` finding reports. Declines to check above 20 atoms.) |
 | Graph rendering | React Flow (`@xyflow/react`) |
 | Graph layout | ELK.js (layered layout) |
 | UI components | shadcn/ui + Tailwind CSS |
@@ -83,6 +83,15 @@ Agents must not add authentication in v1, but must:
 
 Verify current package versions at install time; do not rely on remembered APIs. Read each library's current docs before use, especially LangGraph JS and React Flow, whose APIs change between major versions.
 
+Traps confirmed during Phase 0 scaffolding, all of which break a scaffold built from older knowledge:
+
+- Turborepo's `envMode` now defaults to `strict`: an environment variable not declared in `globalEnv` or a task's `env` is stripped from the task. Add new variables to `turbo.json` as well as `.env.example`.
+- TypeScript 6 removed `baseUrl` and `moduleResolution: node`, and no longer auto-discovers `@types`, so every Node-targeted tsconfig must set `"types": ["node"]` explicitly.
+- Internal packages are consumed as TypeScript source (see section 5.4), so relative imports are written with a real `.ts` extension, which Node requires to execute the source directly. `rewriteRelativeImportExtensions` turns them back into `.js` on emit.
+- Next 16 removed `next lint` and the `eslint` config key; `apps/web` is linted by the root flat config like every other package. Turbopack is the default for `next build`, so `next.config.ts` must not set a `webpack` option. Generated route types (`LayoutProps`, `PageProps`) come from `next typegen`, which the web `typecheck` script runs before `tsc`.
+- Postgres 18 images expect a single volume mount at `/var/lib/postgresql`, not `/var/lib/postgresql/data`.
+- `eslint-plugin-boundaries` v7 replaced `element-types`/`external` with one `boundaries/dependencies` rule using `policies` and entity selectors.
+
 ---
 
 ## 4. Repository layout
@@ -91,6 +100,12 @@ Verify current package versions at install time; do not rely on remembered APIs.
 make-your-case/
 ├── apps/
 │   ├── web/                 # Next.js: UI (MVVM) + API route handlers
+│   │   └── src/
+│   │       ├── app/         # App Router pages and route handlers
+│   │       ├── server/      # Server-side services, composition root for the API
+│   │       ├── client/      # API client, ViewModels, Views (domain types only)
+│   │       ├── components/  # shadcn/ui components
+│   │       └── lib/         # `cn` helper and other UI utilities
 │   └── worker/              # Node process: pg-boss consumer that runs the pipeline
 ├── packages/
 │   ├── domain/              # Plain domain types, Zod schemas, repository interfaces. No I/O.
@@ -99,11 +114,22 @@ make-your-case/
 │   ├── pipeline/            # LangGraph workflow, LLM provider factory, prompts, stage logic
 │   └── config/              # Shared tsconfig, eslint, vitest presets
 ├── fixtures/
-│   └── arguments/           # Test arguments supplied by the maintainer (Markdown)
+│   └── arguments/           # Test arguments supplied by the maintainer: `NN-name.md`
+│                            # plus an `NN-name.expected.yaml` sidecar per argument
+│                            # stating expected status, thesis, required and
+│                            # forbidden findings, and counts (`hard`), alongside
+│                            # advisory expectations (`soft`). The eval script in
+│                            # section 8.6 asserts `hard` and reports `soft`.
 ├── docs/
 │   └── argument-model.mermaid
+├── scripts/
+│   └── check-boundaries.mjs # Asserts the import-boundary rules below actually fire
 ├── docker-compose.yml       # Local Postgres only
-├── CLAUDE.md
+├── pnpm-workspace.yaml      # Workspace globs + shared version catalog
+├── turbo.json               # Task graph; `globalEnv` must list every variable
+├── eslint.config.js         # Root flat config for all workspaces
+├── .env.example
+├── AGENTS.md
 └── README.md
 ```
 
@@ -111,7 +137,7 @@ make-your-case/
 
 ```
 domain       → (zod only)
-analysis     → domain, graphology, logic-solver
+analysis     → domain, graphology                      (no SAT dependency; see section 3)
 persistence  → domain, drizzle
 pipeline     → domain, analysis, langgraph/langchain   (NOT persistence; repositories are injected)
 worker       → pipeline, persistence, analysis, domain (composition root)
@@ -120,6 +146,10 @@ web (client) → domain types only, via the API client
 ```
 
 No package may import from an `apps/*` package. Client-side code in `apps/web` must never import `persistence`, `pipeline`, or server-only modules.
+
+These rules are enforced by `eslint-plugin-boundaries` in `packages/config/eslint/boundaries.js`, which matches cross-package dependencies by module source rather than resolved path. The `web (server)` / `web (client)` split is only expressible as a **directory** boundary, which is why `apps/web/src/server/` and `apps/web/src/client/` exist as separate trees.
+
+Because lint configuration that is never exercised rots silently, each rule has a fixture containing one deliberately illegal import under a `__boundaries__/` directory inside the package it tests (the plugin derives an element's type from its file path). `pnpm lint:boundaries` requires every one to be rejected. Add a fixture whenever you add a rule.
 
 ---
 
@@ -170,6 +200,22 @@ interface AnalysisRunRepository {
 - LLM stages work with short **local IDs** (`s12` for spans, `c3` for claims, `i2` for inferences). The pipeline maps local IDs to UUIDs when building the domain `ArgumentGraph`. Any local ID the model references that doesn't exist is a validation error.
 - Models never produce character offsets. Spans and their offsets are computed deterministically before any LLM call; models reference span IDs only.
 
+### 5.4 Internal packages are consumed as TypeScript source
+
+Library packages have no build step. Each exports `./src/index.ts` directly:
+
+```json
+"exports": { ".": "./src/index.ts" },
+"types": "./src/index.ts"
+```
+
+This removes the stale-`dist` class of bug, means `typecheck`, `lint` and `test` need no build ordering, and gives instant cross-package HMR. The consequences bind every later phase:
+
+- `apps/web` must list every workspace package it imports in `transpilePackages` in `next.config.ts`. Adding a package dependency means editing that list, or Next will not compile it.
+- Relative imports inside packages are written with a real `.ts` extension (`./ids.ts`), because Node needs that to execute the source directly. `allowImportingTsExtensions` and `rewriteRelativeImportExtensions` in the shared library tsconfig let `tsc` rewrite them to `.js` on emit.
+- `apps/worker` is the only package with a real `build`. In development it runs its TypeScript entrypoint directly under Node.
+- If some tool cannot resolve source, add a build for that one package rather than converting the repository.
+
 ---
 
 ## 6. Argument model
@@ -218,11 +264,19 @@ The analysis layer checks entailment with a SAT solver. Deductive steps without 
 
 **Goal:** a complete, tested domain model, analysis engine, and persistence layer, usable without any LLM.
 
-### 7.1 Scaffolding
+### 7.1 Scaffolding — **complete** (Phase 0)
 
-- pnpm workspace, Turborepo pipelines (`build`, `test`, `lint`, `typecheck`), shared configs in `packages/config`.
-- `docker-compose.yml` with Postgres for local development.
-- `.env.example` documenting all variables (see §10).
+All seven workspaces exist and are wired together. Done:
+
+- pnpm workspace with a shared version catalog; Turborepo tasks (`build`, `dev`, `test`, `lint`, `typecheck`) with `globalEnv` declared; shared tsconfig/eslint/vitest presets in `packages/config`.
+- `docker-compose.yml` with Postgres 18 for local development, plus `pnpm db:up` / `db:down` / `db:logs`.
+- `.env.example` documenting all variables (see section 10), parsed by the Zod schema in `packages/domain/src/config/env.ts` and used by both apps.
+- Import boundaries enforced and self-tested (section 4).
+- `apps/web`: Next.js App Router with Tailwind v4 and shadcn/ui initialised (no components yet); the landing page is still the stock Next.js page.
+- `apps/worker`: structured JSON logging and fail-fast config parsing; not yet a pg-boss consumer.
+- `packages/analysis`: the propositional entailment checker and its tests (section 3). Everything else in `analysis`, plus all of `persistence` and `pipeline`, is still a stub.
+
+Phase 1 continues from here with sections 7.2 to 7.5.
 
 ### 7.2 `packages/domain`
 
@@ -256,7 +310,7 @@ Two parts, both pure and deterministic.
 | load-bearing | `load_bearing` | Model support as an AND/OR graph: a ground claim (concluded by no inference) is assumed supported; a claim is supported if any inference concluding it holds; a `linked` inference holds if all premises are supported; a `convergent` inference holds if any premise is supported. A claim is load-bearing if removing it leaves the thesis unsupported. Brute-force per-claim removal is acceptable (graphs are small). |
 | circularity | `circularity` | Cycle detection over claim → inference → conclusion edges using graphology. Report each cycle's members. Severity `critical`. |
 | unsupported-claim | `unsupported_claim` | Ground claims (no supporting inference) of kind `factual`, `causal`, or `predictive` that are load-bearing. These are what the argument asks the reader to simply accept. Severity `warning`. |
-| deductive-validity | `invalid_step` / `unchecked_step` | For `deductive` inferences with a formalization: SAT-check whether premises ∧ ¬conclusion is satisfiable; if so, `invalid_step` (`critical`) with a counterexample assignment in the explanation. Deductive steps without formalization: `unchecked_step` (`info`). |
+| deductive-validity | `invalid_step` / `unchecked_step` | For `deductive` inferences with a formalization: call `entails(premises, conclusion)` from `packages/analysis/src/logic/`, which checks whether premises ∧ ¬conclusion is satisfiable. If it is, `invalid_step` (`critical`), with the returned counterexample assignment in the explanation. Deductive steps without a formalization, or whose formalization exceeds the checker's atom limit (`reason: "too_many_atoms"`), produce `unchecked_step` (`info`) — never `invalid_step`. |
 
 Explanations are plain English, reference claims by their canonical text, and follow the guardrails in §1.
 
@@ -315,6 +369,7 @@ segment → classify → [gate] → extract → reconstruct → validate ─┬�
 - State is a typed LangGraph state annotation; every node is a separately testable function.
 - Use the Postgres checkpointer so a crashed run can resume.
 - Prompts live in `packages/pipeline/src/prompts/` as versioned modules; each prompt states the guardrails from §1 explicitly. Record prompt versions in `model_config`.
+- **Reconstruction must not repair a fallacy.** When the text states a conditional in a particular direction, reconstruction formalizes it in that direction. It must not add the converse as an implicit premise, and must not turn a stated conditional into a biconditional, even when doing so would make an invalid step valid. Adding an unstated premise is for genuine gaps the author relied on, not for rescuing reasoning the author got wrong; the fixture `fixtures/arguments/07-affirming-consequent.md` exists to catch exactly this failure mode. Distinguishing the two is the difference between `implicit_premise` and `invalid_step`.
 - If the document exceeds a configurable size limit (`MAX_DOCUMENT_CHARS`), reject at submission with a clear error rather than truncating.
 
 ### 8.3 Progress feedback
@@ -435,3 +490,14 @@ Configuration is parsed and validated with Zod at startup in each app; fail fast
 ## 13. Future iterations (context only — do not build)
 
 Authentication, RBAC and user management (required before deployment); argument editing with child revisions; PDF and DOCX ingestion; evidence linking with reliability assessment; competing hypotheses over shared facts; AIF JSON export; Bedrock and self-hosted model providers; long-document chunking strategies.
+
+<!-- BEGIN:turborepo-agent-rules -->
+
+# This is NOT the Turborepo you know
+
+Turborepo configuration, task behavior, and CLI commands can vary between installed versions and may differ from your training data. Resolve the `turbo` package from this file's directory or relevant workspace; in monorepos, it may not be visible from the repository root. For example, run `node -p "require.resolve('turbo/package.json')"` from a workspace that depends on `turbo`.
+
+Read `docs/README.md` inside that installed package first, then read the relevant pages from its `docs/` directory before changing Turborepo configuration or commands. Heed deprecation notices. These bundled docs match the installed package version and are available without network access.
+
+This block is written and re-added by `turbo` before repository-scoped commands when an AI agent is detected. In the Turborepo source repository, its template is defined in `crates/turborepo-cli/src/cli/agent_guidance.rs`. Removing the managed block while updates are enabled means a later qualifying invocation will add it again. Set `"agentGuidance": false` in the root `turbo.json` or `turbo.jsonc` to opt out; this does not remove an existing block. Keep the block committed with your work to avoid an uncommitted change on the next agent invocation.
+<!-- END:turborepo-agent-rules -->

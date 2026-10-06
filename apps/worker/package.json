@@ -1,0 +1,27 @@
+{
+  "name": "@make-your-case/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=../../.env src/index.ts",
+    "start": "node --env-file-if-exists=../../.env dist/index.js",
+    "build": "tsc",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@make-your-case/analysis": "workspace:*",
+    "@make-your-case/domain": "workspace:*",
+    "@make-your-case/persistence": "workspace:*",
+    "@make-your-case/pipeline": "workspace:*",
+    "pg-boss": "^12.37.0"
+  },
+  "devDependencies": {
+    "@make-your-case/config": "workspace:*",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

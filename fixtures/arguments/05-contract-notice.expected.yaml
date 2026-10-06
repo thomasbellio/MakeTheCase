@@ -1,0 +1,36 @@
+id: 05-contract-notice
+purpose: >
+  The canonical implicit-premise case. The argument is valid only if an
+  unstated premise is supplied: that an email satisfies Section 9's
+  "written notice" requirement.
+expected_status: completed
+thesis: Bellweather's notice of breach was timely (so the forfeiture defense fails)
+hard:
+  findings_present:
+    - kind: implicit_premise
+      severity: critical
+    - kind: load_bearing
+  findings_absent:
+    - circularity
+    - invalid_step
+    - unsupported_claim
+  claim_count: { min: 4, max: 8 }
+  inferred_claims: { min: 1, max: 3 }
+soft:
+  key_claims:
+    - Section 9 requires written notice of breach within 30 days
+    - The breach occurred on January 10
+    - Bellweather emailed Ostrander on February 7, 28 days later
+  implicit_premises:
+    - "Required: an email satisfies Section 9's written-notice requirement"
+    - "Acceptable additional: notice to Ostrander's operations manager counts as notice to Ostrander"
+  load_bearing: >
+    The Section 9 rule, the February 7 email, and the inferred
+    email-counts-as-written-notice premise must all be load-bearing.
+  formalization: >
+    With the implicit premise included, the deductive step should be
+    formalized and found valid.
+notes: >
+  The weakness is that the premise is unstated, not that the logic fails.
+  Reconstruction should complete the argument by adding the premise and
+  marking it inferred, not report invalid_step.

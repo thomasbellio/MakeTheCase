@@ -1,0 +1,37 @@
+id: 09-restated-claims
+purpose: >
+  The same factual claim (Calder received the notice on March 31) is
+  stated six times in different words. Tests that reconstruction merges
+  them into one claim with multiple occurrences.
+expected_status: completed
+thesis: Northgate's lease termination was effective on April 30 (so post-April rent claims should be dismissed)
+hard:
+  findings_absent:
+    - circularity
+    - invalid_step
+    - unsupported_claim
+  claim_count: { min: 3, max: 7 }
+  max_occurrences_for_single_claim: { min: 4 }
+soft:
+  key_claims:
+    - Section 18 makes termination effective 30 days after the landlord receives written notice
+    - Northgate sent written notice by certified mail
+    - 'Merged: Calder received the notice on March 31'
+    - The 30-day period ran through April 30
+  merging: >
+    "Received the termination notice on March 31", "received that notice on
+    March 31", "its receipt of the notice occurred on March 31", "had
+    Northgate's written notice in hand as of March 31", "got the notice on
+    March 31" and "received Northgate's written notice on March 31" should
+    all be occurrences of one claim. At least four must be merged for the
+    hard check; all six is the target.
+  not_merged: >
+    "The certified mail receipt bears its agent's signature with that date"
+    is evidence for the receipt date, not a restatement of it. It may be its
+    own claim supporting the merged claim.
+  load_bearing: The merged receipt-date claim must be load-bearing.
+notes: >
+  If merging fails, the receipt-date claim fragments into several nodes and
+  the load-bearing analysis may undercount it. The conclusion section
+  restating the whole argument should not create a second, parallel
+  inference duplicating the one in the argument section.

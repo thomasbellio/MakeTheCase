@@ -1,0 +1,22 @@
+node_modules/
+.pnpm-store/
+
+# build output
+dist/
+.next/
+out/
+*.tsbuildinfo
+
+# caches
+.turbo/
+.vitest/
+coverage/
+
+# env
+.env
+.env.*
+!.env.example
+
+# editor / os
+.DS_Store
+*.log

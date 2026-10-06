@@ -1,0 +1,26 @@
+# Local development only: Postgres. The apps run on the host via `pnpm dev`.
+# See AGENTS.md section 2 - production deployment manifests are out of scope.
+name: make-your-case
+
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: makeyourcase
+      POSTGRES_PASSWORD: makeyourcase
+      POSTGRES_DB: makeyourcase
+    ports:
+      - '5432:5432'
+    volumes:
+      # Postgres 18+ expects a single mount at /var/lib/postgresql; it stores
+      # data in a major-version subdirectory beneath it.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U makeyourcase -d makeyourcase']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:

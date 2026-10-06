@@ -1,0 +1,43 @@
+id: 03-valid-chained
+purpose: >
+  Happy path with a multi-level chain: facts support an intermediate
+  conclusion, which combines with a rule to support a second intermediate
+  conclusion, which combines with a statute to support the thesis.
+expected_status: completed
+thesis: The non-compete agreement is unenforceable against Ms. Reyes
+hard:
+  findings_present:
+    - kind: load_bearing
+      severity: info
+  findings_absent:
+    - implicit_premise
+    - circularity
+    - invalid_step
+    - unsupported_claim
+  findings_max_severity: info
+  claim_count: { min: 7, max: 11 }
+  inference_count: { min: 3, max: 4 }
+soft:
+  key_claims:
+    - Ms. Reyes was hired in January 2021
+    - She signed the non-compete in March 2023
+    - She received no raise, bonus, promotion or payment for signing
+    - 'Intermediate: the only consideration was continued employment'
+    - 'Rule (Dalton): continued employment alone is not independent consideration for a post-hire non-compete'
+    - 'Intermediate: the agreement lacked independent consideration'
+    - 'Rule (Lab. Code § 22): a non-compete is enforceable only if supported by independent consideration'
+  structure: >
+    Three chained inferences. The two intermediate conclusions are each the
+    conclusion of one inference and a premise of the next. Depth from facts
+    to thesis is three.
+  load_bearing: >
+    Both intermediate conclusions should be flagged load-bearing, along with
+    both rules and the "nothing else received" fact.
+  formalization: >
+    The Dalton step and the § 22 step are deductive rule applications and
+    should be formalized and found valid. The first step (facts to "only
+    consideration was continued employment") may reasonably be tagged
+    deductive or abductive.
+notes: >
+  Verifies that intermediate conclusions are represented as single claims
+  that are both concluded and used as premises, rather than duplicated.
