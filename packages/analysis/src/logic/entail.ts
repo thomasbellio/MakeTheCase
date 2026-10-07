@@ -1,4 +1,5 @@
-import { collectAtoms, evaluate, type Assignment, type Formula } from './formula.ts';
+import type { Formula } from '@make-your-case/domain';
+import { collectAtoms, evaluate, type Assignment } from './formula.ts';
 
 /**
  * Above this many distinct atoms we decline to check rather than enumerate

@@ -1,16 +1,13 @@
+import type { Formula } from '@make-your-case/domain';
+
 /**
- * Propositional formulas, as produced by the reconstruction stage for
- * `deductive` inferences (AGENTS.md section 6, "Formalization").
+ * Evaluation of the propositional formulas defined in
+ * `@make-your-case/domain`.
  *
- * Atom names are arbitrary labels (`P`, `Q`, ...); the owning `Formalization`
- * maps each one to a claim local ID.
+ * The data lives in `domain` because `Inference.formalization` is a persisted
+ * column; the semantics live here because domain objects carry no behaviour
+ * (AGENTS.md section 5.1).
  */
-export type Formula =
-  | { atom: string }
-  | { not: Formula }
-  | { and: Formula[] }
-  | { or: Formula[] }
-  | { implies: [Formula, Formula] };
 
 /** A truth assignment over atom names. */
 export type Assignment = Readonly<Record<string, boolean>>;

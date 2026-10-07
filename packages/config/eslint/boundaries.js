@@ -100,7 +100,14 @@ const policies = [
     allow: [
       self('persistence'),
       ...TOOLING,
-      ...pkg(WORKSPACE.domain, 'drizzle-orm', 'drizzle-orm/*', 'pg', '@testcontainers/*'),
+      ...pkg(
+        WORKSPACE.domain,
+        '@make-your-case/domain/testing',
+        'drizzle-orm',
+        'drizzle-orm/*',
+        'drizzle-kit',
+        'pg',
+      ),
     ],
   },
   {
@@ -109,7 +116,14 @@ const policies = [
     allow: [
       self('pipeline'),
       ...TOOLING,
-      ...pkg(WORKSPACE.domain, WORKSPACE.analysis, 'zod', 'zod/*', '@langchain/*'),
+      ...pkg(
+        WORKSPACE.domain,
+        '@make-your-case/domain/testing',
+        WORKSPACE.analysis,
+        'zod',
+        'zod/*',
+        '@langchain/*',
+      ),
     ],
   },
   {
@@ -123,6 +137,7 @@ const policies = [
         WORKSPACE.analysis,
         WORKSPACE.persistence,
         WORKSPACE.pipeline,
+        '@make-your-case/domain/testing',
         'pg-boss',
       ),
     ],
@@ -133,7 +148,14 @@ const policies = [
     allow: [
       self('web-server'),
       ...TOOLING,
-      ...pkg(WORKSPACE.domain, WORKSPACE.persistence, 'pg-boss', 'next', 'next/*'),
+      ...pkg(
+        WORKSPACE.domain,
+        '@make-your-case/domain/testing',
+        WORKSPACE.persistence,
+        'pg-boss',
+        'next',
+        'next/*',
+      ),
     ],
   },
   {

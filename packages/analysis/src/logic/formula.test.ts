@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { collectAtoms, evaluate, type Formula } from './formula.ts';
+import type { Formula } from '@make-your-case/domain';
+import { collectAtoms, evaluate } from './formula.ts';
 
 describe('collectAtoms', () => {
   it('returns atoms in first-seen order without duplicates', () => {

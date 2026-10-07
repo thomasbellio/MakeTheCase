@@ -8,6 +8,9 @@ export const baseTestConfig = defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts', 'test/**/*.test.ts'],
+    // Repository round-trips need a live Postgres, so they run under
+    // `pnpm test:db` instead (AGENTS.md section 7.6).
+    exclude: ['**/node_modules/**', '**/*.integration.test.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],

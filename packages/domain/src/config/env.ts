@@ -23,8 +23,15 @@ export const envSchema = z.object({
   LLM_MODEL_EXTRACT: z.string().optional(),
   LLM_MODEL_RECONSTRUCT: z.string().optional(),
 
+  LLM_MODEL_JUDGE: z.string().optional(),
+
   MAX_DOCUMENT_CHARS: z.coerce.number().int().positive().default(200_000),
   PIPELINE_MAX_VALIDATION_RETRIES: z.coerce.number().int().min(0).default(3),
+  GATE_MIN_ARGUMENTATIVE_SPANS: z.coerce.number().int().min(1).default(2),
+
+  // `pnpm test:db` only (AGENTS.md section 7.6). Optional so neither app
+  // requires it to start.
+  TEST_DATABASE_URL: z.url().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

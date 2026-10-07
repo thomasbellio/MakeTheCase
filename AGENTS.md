@@ -64,26 +64,35 @@ Agents must not add authentication in v1, but must:
 
 | Concern | Choice |
 |---|---|
-| Language | TypeScript, `strict: true`, ESM |
-| Monorepo | pnpm workspaces + Turborepo |
+| Language | TypeScript, `strict: true`, ESM. Pinned to `typescript@6`: `typescript-eslint` peers `typescript <6.1.0`, and TS 7 ships no JS API until 7.1, so TS 7 would disable type-aware linting. |
+| Monorepo | pnpm workspaces (shared versions pinned in a `pnpm-workspace.yaml` catalog) + Turborepo |
 | Web app | Next.js (App Router), React |
 | Database | PostgreSQL |
 | ORM | Drizzle ORM + drizzle-kit migrations |
-| Schemas / runtime validation | Zod |
+| Schemas / runtime validation | Zod v4 (`z.string().url()` is deprecated in favour of `z.url()`) |
 | LLM orchestration | LangGraph JS (`@langchain/langgraph`) as an explicit **workflow graph**, not a supervisor/agent pattern |
 | LLM providers | LangChain chat model integrations (e.g. `@langchain/anthropic`, `@langchain/openai`, `@langchain/aws`) behind our own provider factory |
 | Workflow checkpointing | `@langchain/langgraph-checkpoint-postgres` |
 | Background jobs | pg-boss (Postgres-backed queue) |
-| Graph algorithms | graphology |
-| Propositional validity | `logic-solver` (SAT) |
+| Graph algorithms | graphology + `graphology-components` (strongly-connected components, for circularity) |
+| Propositional validity | In-house entailment checker, `packages/analysis/src/logic/`. `logic-solver` was the original choice but has been unmaintained since 2016. Formalizations have a handful of atoms, so enumerating all 2^n assignments is instant, needs no dependency, keeps the analysis layer pure, and yields the counterexample an `invalid_step` finding reports. Declines to check above 20 atoms. |
 | Graph rendering | React Flow (`@xyflow/react`) |
 | Graph layout | ELK.js (layered layout) |
 | UI components | shadcn/ui + Tailwind CSS |
 | UI state (MVVM) | MobX + `mobx-react-lite` |
-| Testing | Vitest (unit/integration); Testcontainers or local Postgres for DB tests |
+| Testing | Vitest. `pnpm test` is unit-only and needs no Docker; `pnpm test:db` runs repository integration tests against the local Compose Postgres (§7.6) |
 | Lint / format | ESLint + Prettier |
 
 Verify current package versions at install time; do not rely on remembered APIs. Read each library's current docs before use, especially LangGraph JS and React Flow, whose APIs change between major versions.
+
+Traps confirmed while scaffolding, each of which breaks a setup built from older knowledge:
+
+- Turborepo's `envMode` defaults to **`strict`**: an environment variable not declared in `globalEnv` (or a task's `env`) is stripped from the task. A new variable must be added to `turbo.json` as well as `.env.example`.
+- TypeScript 6 removed `baseUrl` and `moduleResolution: node`, and no longer auto-discovers `@types`. Every Node-targeted tsconfig must set `"types": ["node"]` explicitly.
+- Next 16 removed `next lint` and the `eslint` config key, so `apps/web` is linted by the root flat config like every other package. Turbopack is the default for `next build`, so `next.config.ts` must not set a `webpack` option. Generated route types (`LayoutProps`, `PageProps`) come from `next typegen`, which the web `typecheck` script runs before `tsc`.
+- Vitest 5 deprecated `vitest.workspace.ts` in favour of `test.projects`; mocks auto-clear between tests, and unawaited async assertions now fail rather than warn.
+- Postgres 18 images expect a single volume mount at `/var/lib/postgresql`, not `/var/lib/postgresql/data`.
+- `eslint-plugin-boundaries` v7 replaced `element-types`/`external` with one `boundaries/dependencies` rule using `policies` and entity selectors.
 
 ---
 
@@ -93,6 +102,12 @@ Verify current package versions at install time; do not rely on remembered APIs.
 make-your-case/
 ├── apps/
 │   ├── web/                 # Next.js: UI (MVVM) + API route handlers
+│   │   └── src/
+│   │       ├── app/         # App Router pages and route handlers
+│   │       ├── server/      # Services, composition root for the API
+│   │       ├── client/      # API client, ViewModels, Views (domain types only)
+│   │       ├── components/  # shadcn/ui components
+│   │       └── lib/         # `cn` helper and other UI utilities
 │   └── worker/              # Node process: pg-boss consumer that runs the pipeline
 ├── packages/
 │   ├── domain/              # Plain domain types, Zod schemas, repository interfaces. No I/O.
@@ -105,17 +120,27 @@ make-your-case/
 ├── fixtures/
 │   └── arguments/           # NN-name.md (input) + NN-name.expected.yaml (answer key)
 ├── docs/
-│   └── argument-model.mermaid
+│   └── argument-model.mermaid   # Canonical model (§6)
+├── scripts/
+│   └── check-boundaries.mjs # Asserts the dependency rules below actually reject violations
 ├── docker-compose.yml       # Local Postgres only
-├── CLAUDE.md
+├── pnpm-workspace.yaml      # Workspace globs + shared version catalog
+├── turbo.json               # Task graph; `globalEnv` must list every environment variable
+├── eslint.config.js         # Root flat config for every workspace
+├── .env.example
+├── AGENTS.md
 └── README.md
 ```
+
+Fixture pairs are `fixtures/arguments/NN-name.md` (exactly what a user would paste) and
+`NN-name.expected.yaml` (the answer key, §8.7). Nothing else belongs in that directory — the eval
+harness globs it.
 
 ### Dependency rules (enforce with ESLint import boundaries)
 
 ```
 domain       → (zod only)
-analysis     → domain, graphology, logic-solver
+analysis     → domain, graphology                      (no SAT dependency; see §3)
 persistence  → domain, drizzle
 pipeline     → domain, analysis, langgraph/langchain   (NOT persistence; repositories are injected)
 worker       → pipeline, persistence, analysis, domain (composition root)
@@ -125,6 +150,16 @@ tools/eval   → pipeline, analysis, domain, persistence  (composition root for 
 ```
 
 No package may import from an `apps/*` package. Client-side code in `apps/web` must never import `persistence`, `pipeline`, or server-only modules.
+
+Enforced by `eslint-plugin-boundaries` in `packages/config/eslint/boundaries.js`, which matches
+cross-package dependencies by module source rather than resolved path. The `web (server)` /
+`web (client)` split is only expressible as a **directory** boundary, which is why
+`apps/web/src/server/` and `apps/web/src/client/` are separate trees.
+
+Lint configuration that is never exercised rots silently, so each rule has a fixture containing one
+deliberately illegal import, in a `__boundaries__/` directory **inside the package it tests** (the
+plugin derives an element's type from its file path). `pnpm lint:boundaries` requires every one to
+be rejected. Add a fixture whenever you add a rule.
 
 ---
 
@@ -175,6 +210,23 @@ interface AnalysisRunRepository {
 - LLM stages work with short **local IDs** (`s12` for spans, `c3` for claims, `i2` for inferences). The pipeline maps local IDs to UUIDs when building the domain `ArgumentGraph`. Any local ID the model references that doesn't exist is a validation error.
 - Models never produce character offsets. Spans and their offsets are computed deterministically before any LLM call; models reference span IDs only.
 
+### 5.4 Internal packages are consumed as TypeScript source
+
+Library packages have no build step; each exports `./src/index.ts` directly. This removes the
+stale-`dist` class of bug, means `typecheck`/`lint`/`test` need no build ordering, and gives
+cross-package HMR. The consequences bind every phase:
+
+- `apps/web` must list every workspace package it imports in `transpilePackages` in
+  `next.config.ts`. Adding a package dependency means editing that list, or Next will not compile it.
+- Relative imports inside packages are written with a real `.ts` extension (`./ids.ts`), because
+  Node needs that to execute the source directly. `allowImportingTsExtensions` and
+  `rewriteRelativeImportExtensions` in the shared library tsconfig let `tsc` rewrite them to `.js`
+  on emit.
+- `apps/worker` is the only package with a real `build`; in development it runs its TypeScript
+  entrypoint directly under Node.
+- If some tool cannot resolve source, add a build for that one package rather than converting the
+  repository.
+
 ---
 
 ## 6. Argument model
@@ -193,7 +245,7 @@ The canonical model is in `docs/argument-model.mermaid`. Key semantics:
 - **Inference**: a reasoning step from one or more premise claims to one conclusion claim. Has a `scheme`, `origin`, and `attribution`. **All premises of an inference are jointly required.** Independent or alternative reasons ("in the alternative...", "any one of which is sufficient") are represented canonically as **separate inferences concluding the same claim**. There is no linked/convergent flag; this single representation removes ambiguity for extraction and simplifies analysis.
 - **InferencePremise**: join between an inference and a premise claim, with its own `origin` (an inferred premise can join a stated inference).
 - **Relation**: an attack or qualification. `rebut` targets a claim's conclusion, `undermine` targets a premise claim, `undercut` targets an inference, `qualify` narrows a claim. Exactly one of `target_claim_id` / `target_inference_id` is set.
-- **Finding**: an analysis result referencing claims and/or inferences. Regenerable, never mutates structure, records `produced_by` (analyzer name + version).
+- **Finding**: an analysis result referencing claims and/or inferences through **FindingTarget** rows (exactly one of `claim_id` / `inference_id` each, plus an `ordinal` giving stable order — for a circularity finding, the position round the cycle). Regenerable, never mutates structure, records `produced_by` (`analyzer-name@version`). A finding has no identity until it is persisted: the analysis layer returns findings whose targets are local IDs, and `persist` maps them.
 
 Roles such as "premise" and "intermediate conclusion" are **computed from graph position**, not stored.
 
@@ -217,7 +269,11 @@ type Formula =
   | { implies: [Formula, Formula] };
 ```
 
-The analysis layer checks entailment with a SAT solver. Deductive steps without a formalization produce `unchecked_step` (info), never `invalid_step`. Conditionals must be formalized in the direction the text states them (§8.3).
+`Formula` is the one documented exception to §7.2's "types inferred from Zod schemas": a recursive
+union needs `z.lazy` with an explicit `z.ZodType<Formula>` annotation, so the hand-written type is
+the source of truth and the schema is checked against it.
+
+The analysis layer checks entailment by enumerating assignments (§3). Deductive steps without a formalization produce `unchecked_step` (info), never `invalid_step`; so do formalizations whose atom count exceeds the checker's limit. Conditionals must be formalized in the direction the text states them (§8.3).
 
 ---
 
@@ -225,11 +281,16 @@ The analysis layer checks entailment with a SAT solver. Deductive steps without 
 
 **Goal:** a complete, tested domain model, analysis engine, and persistence layer, usable without any LLM.
 
-### 7.1 Scaffolding
+### 7.1 Scaffolding — **complete**
 
-- pnpm workspace, Turborepo pipelines (`build`, `test`, `lint`, `typecheck`), shared configs in `packages/config`.
-- `docker-compose.yml` with Postgres for local development.
-- `.env.example` documenting all variables (see §10).
+All seven workspaces exist and are wired together:
+
+- pnpm workspace with a shared version catalog; Turborepo tasks (`build`, `dev`, `test`, `test:db`, `lint`, `typecheck`) with `globalEnv` declared; shared tsconfig/eslint/vitest presets in `packages/config`.
+- `docker-compose.yml` with Postgres 18, plus `pnpm db:up` / `db:down` / `db:logs`.
+- `.env.example` documenting all variables (§10), parsed by the Zod schema in `packages/domain/src/config/env.ts` and used by both apps.
+- Import boundaries enforced and self-tested (§4).
+- `apps/web`: Next.js App Router with Tailwind v4 and shadcn/ui initialised; the landing page is still the stock Next.js page.
+- `apps/worker`: structured JSON logging and fail-fast config parsing; not yet a pg-boss consumer.
 
 ### 7.2 `packages/domain`
 
@@ -255,6 +316,9 @@ Two parts, both pure and deterministic.
 - enum values valid; `confidence` in [0, 1];
 - the thesis is reachable: it is the conclusion of at least one inference, or the graph has a single claim (degenerate argument, allowed but flagged);
 - claims other than the thesis that participate in no inference or relation are **warnings, not errors** (briefs contain background such as standards of review); they do not trigger a retry and are reported as `unconnected_claim` findings;
+- no inference lists the same premise claim twice (duplicates corrupt the joint-requirement count in support analysis);
+- an `InferencePremise.origin` agrees with the `origin` of the claim it points at;
+- when a relation targets an inference, the attribution compared against the source is that inference's `attribution`;
 - `formalization`, if present, references only premise and conclusion claims of that inference, and has one formula per premise.
 
 **Logical analysis** — `analyzeArgumentGraph(graph): Finding[]`, composed of independent analyzers, each with a `name` and `version`:
@@ -262,11 +326,23 @@ Two parts, both pure and deterministic.
 | Analyzer | Finding | Logic |
 |---|---|---|
 | implicit-premise | `implicit_premise` | Every claim with `origin: "inferred"` used as a premise. Severity `warning`; `critical` if also load-bearing. |
-| load-bearing | `load_bearing` | Over the author graph, model support as an AND/OR graph: a ground claim (concluded by no inference) is assumed supported; a claim is supported if **any** inference concluding it holds (OR); an inference holds if **all** its premises are supported (AND). A claim is load-bearing if removing it leaves the thesis unsupported. Brute-force per-claim removal is acceptable (graphs are small). Severity `info`. Attacks do not affect support in v1. |
-| circularity | `circularity` | Cycle detection over claim → inference → conclusion edges using graphology. Report each cycle's members. Severity `critical`. |
-| unsupported-claim | `unsupported_claim` | Author-attributed, load-bearing ground claims of kind `factual`, `causal`, or `predictive` that have **no citation**. These are what the argument asks the reader to simply accept. Severity `warning`. |
+| load-bearing | `load_bearing` | Over the author graph, model support as an AND/OR graph: a ground claim (concluded by no inference) is assumed supported; a claim is supported if **any** inference concluding it holds (OR); an inference holds if **all** its premises are supported (AND). Computed as a least fixed point, so a claim supported only by reasoning that depends on it in turn is **not** supported — the graph does not get to assume what it is proving. A claim is load-bearing if removing it leaves the thesis unsupported; the thesis itself is never reported. Brute-force per-claim removal is acceptable (graphs are small). Severity `info`. Attacks do not affect support in v1. |
+
+**Scope.** All six analyzers run over the **author graph** only. The tool reports on the reasoning
+its user is responsible for; it does not grade a reconstruction of the opponent's. This matters most
+for `deductive-validity`: §8.3 rule 7 has reconstruction model the opponent's own inference so that
+an undercutting attack has a target, and that inference may well be invalid — flagging it would both
+misread the product's purpose and contradict fixture 04.
+
+**Load-bearing when nothing grounds the thesis.** On a circular argument the least fixed point
+leaves the thesis unsupported, which would make "removing X leaves the thesis unsupported" vacuously
+true of every claim. So load-bearing is computed against a baseline in which claims inside a cycle
+are seeded as given. On fixture 06 that flags the one claim the rest of the brief leans on, rather
+than everything or nothing. On an acyclic graph the seeding is a no-op.
+| circularity | `circularity` | Cycle detection over claim → inference → conclusion edges using graphology's strongly-connected components. **One finding per non-trivial SCC**, not per simple cycle (enumerating simple cycles is exponential and double-reports the same loop). Targets are the cycle's claims and inferences in traversal order. Severity `critical`. |
+| unsupported-claim | `unsupported_claim` | Author-attributed, **stated**, load-bearing ground claims of kind `factual`, `causal`, or `predictive` that have **no citation**. These are what the argument asks the reader to simply accept. Inferred claims are excluded: they can never carry a citation and are already reported as `implicit_premise`. Severity `warning`. |
 | unconnected-claim | `unconnected_claim` | Claims (other than the thesis) in no inference or relation. Severity `info`. |
-| deductive-validity | `invalid_step` / `unchecked_step` | For `deductive` inferences with a formalization: SAT-check whether premises ∧ ¬conclusion is satisfiable; if so, `invalid_step` (`critical`) with a counterexample assignment in the explanation. Deductive steps without formalization: `unchecked_step` (`info`). |
+| deductive-validity | `invalid_step` / `unchecked_step` | For `deductive` inferences with a formalization: check whether premises ∧ ¬conclusion is satisfiable; if so, `invalid_step` (`critical`) with a counterexample assignment in the explanation. A step that is checked and valid produces **no finding** — there is no `valid_step` kind, and absence is the encoding. Deductive steps without a formalization, or whose formalization exceeds the checker's atom limit, produce `unchecked_step` (`info`) and never `invalid_step`. |
 
 Explanations are plain English, reference claims by their canonical text, and follow the guardrails in §1.
 
@@ -274,10 +350,12 @@ Severity summary: `critical` — circularity, invalid_step, load-bearing implici
 
 ### 7.4 `packages/persistence`
 
-- Drizzle schema mirroring `docs/argument-model.mermaid` (snake_case columns, FKs, enum types, indexes on all FKs and on `(run_id, sequence)` for events).
+- Drizzle schema mirroring `docs/argument-model.mermaid` (snake_case columns, FKs, enum types, indexes on all FKs and a unique index on `(run_id, sequence)` for events).
+- Constraints the ER diagram cannot express: CHECK exactly one of `target_claim_id` / `target_inference_id` on `relation` and of `claim_id` / `inference_id` on `finding_target`; CHECK `confidence` in `[0, 1]`; a partial unique index on `claim (revision_id) WHERE is_thesis` enforcing one thesis per revision. `occurrence`, `inference_premise` and `finding_target` use composite primary keys, not surrogate ids.
 - Migrations via drizzle-kit, committed to the repo.
 - Mappers (`toDomain` / `toRow`) per entity; mapper unit tests for round-tripping.
 - Repository implementations of every interface in §5.2. `saveArgumentGraph` is a single transaction.
+- Local-ID → UUID mapping lives here, not in `pipeline`: one function assigns a UUID per local ID and rewrites claims, occurrences, inferences, premises, relations, finding targets **and `formalization.atoms`**, so a persisted formalization points at real claim IDs rather than leaving local IDs inside a JSON column.
 
 ### 7.5 Phase 1 acceptance criteria
 
@@ -287,8 +365,38 @@ Severity summary: `critical` — circularity, invalid_step, load-bearing implici
   - **04 attribution** — opposing claims excluded from support; rebut, undermine and undercut relations validate.
   - **08 / 14 citations** — exactly one uncited load-bearing fact flagged; cited facts not flagged.
   - plus a graph failing several validation rules, and one with an unconnected background claim (warning only).
+- Fixtures are built with a small test-only builder DSL rather than raw object literals, and
+  `build()` performs no validation or repair, so the validation-failure fixture can emit genuinely
+  broken graphs.
+- Fixture 14 is reduced to roughly 20 claims that preserve every behaviour its answer key names (two
+  alternative routes, the non-load-bearing inferred premise, the single uncited load-bearing fact,
+  rebut/undermine/undercut, hedged modality, one unconnected background claim). Its keys that need
+  the whole brief — `claim_count`, `spans_with_function`, occurrence counts — are segmentation,
+  classification and extraction properties, which a hand-typed graph cannot honestly demonstrate;
+  they belong to `pnpm eval` (§8.7). Algorithm behaviour at scale is covered by **generated** graphs
+  (a long support chain, a wide alternative-route fan-in, a large cycle) asserting termination,
+  correct load-bearing and a runtime bound.
+- A test reads each real `NN-name.expected.yaml` and asserts the finding-shaped hard keys against
+  the computed findings, so fixtures and answer keys cannot drift apart silently.
 - `pnpm test` passes; analysis coverage ≥ 90%.
-- Repository integration tests round-trip a full `ArgumentGraph` through Postgres unchanged.
+- `pnpm test:db` round-trips a full `ArgumentGraph` — inferred claims, multi-occurrence claims,
+  opposing claims, all four relation types, a formalization, findings with multiple ordered targets —
+  through Postgres unchanged, and a forced mid-save failure leaves nothing written.
+
+### 7.6 Testing strategy
+
+- **`pnpm test` is unit-only and must pass with no Docker running.** The shared Vitest preset
+  excludes `**/*.integration.test.ts`.
+- **`pnpm test:db`** runs the repository integration tests against the local Compose Postgres, in a
+  separate `makeyourcase_test` database addressed by `TEST_DATABASE_URL`. The helper creates the
+  database if absent and applies migrations before the suite (a Compose init script would not do it:
+  those run only on a fresh volume).
+- Isolation is `TRUNCATE ... RESTART IDENTITY CASCADE` between tests, deliberately **not** an outer
+  transaction with savepoints — `saveArgumentGraph`'s own transaction is a thing §5.2 requires us to
+  test, and wrapping it would mask commit and rollback bugs in exactly that code.
+- Unit tests that depend on a repository use the in-memory fakes exported from
+  `@make-your-case/domain/testing`, not ad-hoc mocks. They live in `domain` because `pipeline` may
+  never import `persistence` (§4), so that is the only package every consumer can reach.
 
 ---
 
@@ -301,6 +409,7 @@ Severity summary: `critical` — circularity, invalid_step, load-bearing implici
 - Define our own `ModelProvider` port: `getChatModel(stage: PipelineStage): BaseChatModel`.
 - A factory builds models from configuration (`LLM_PROVIDER`, per-stage model overrides). Implement Anthropic and OpenAI now; leave Bedrock (`@langchain/aws`) and an OpenAI-compatible endpoint (for self-hosted models) as documented, easily added options.
 - All structured output uses `withStructuredOutput(zodSchema)`. Stage code must never depend on provider-specific features.
+- `Formula` is recursive, so its Zod schema compiles to a self-`$ref`. Provider support for recursive refs in strict structured-output mode is inconsistent; a depth-bounded `Formula` variant may be needed for the reconstruct prompt, widened on receipt. Verify before relying on the recursive schema.
 - Record the provider and model used per stage in `AnalysisRun.model_config`.
 - Provide a `FakeModelProvider` returning scripted structured responses, for tests.
 
@@ -479,7 +588,11 @@ LLM_MODEL_JUDGE=                  # eval harness only
 MAX_DOCUMENT_CHARS=200000
 PIPELINE_MAX_VALIDATION_RETRIES=3
 GATE_MIN_ARGUMENTATIVE_SPANS=2
+TEST_DATABASE_URL=postgres://...   # `pnpm test:db` only; a separate database (§7.6)
 ```
+
+Every variable must also be declared in `turbo.json`'s `globalEnv`, or Turborepo's strict env mode
+strips it from tasks (§3).
 
 Configuration is parsed and validated with Zod at startup in each app; fail fast on invalid config. Secrets are never logged.
 
@@ -509,3 +622,14 @@ Analysis ideas surfaced while writing the fixtures:
 - **Modality mismatch**: flag conclusions asserted more strongly than their premises allow (fixture 10's conclusion is appropriately hedged and must not trigger it).
 - **Unanswered attacks**: flag opposing claims that rebut or undermine the author's argument without any counter-relation from the author; and let unanswered attacks affect support analysis.
 - **Fixture gaps**: fiction that contains an argument (needs a decided expected behavior), a rhetoric-heavy op-ed, and a true length stress test (~10,000+ words).
+
+<!-- BEGIN:turborepo-agent-rules -->
+
+# This is NOT the Turborepo you know
+
+Turborepo configuration, task behavior, and CLI commands can vary between installed versions and may differ from your training data. Resolve the `turbo` package from this file's directory or relevant workspace; in monorepos, it may not be visible from the repository root. For example, run `node -p "require.resolve('turbo/package.json')"` from a workspace that depends on `turbo`.
+
+Read `docs/README.md` inside that installed package first, then read the relevant pages from its `docs/` directory before changing Turborepo configuration or commands. Heed deprecation notices. These bundled docs match the installed package version and are available without network access.
+
+This block is written and re-added by `turbo` before repository-scoped commands when an AI agent is detected. In the Turborepo source repository, its template is defined in `crates/turborepo-cli/src/cli/agent_guidance.rs`. Removing the managed block while updates are enabled means a later qualifying invocation will add it again. Set `"agentGuidance": false` in the root `turbo.json` or `turbo.jsonc` to opt out; this does not remove an existing block. Keep the block committed with your work to avoid an uncommitted change on the next agent invocation.
+<!-- END:turborepo-agent-rules -->

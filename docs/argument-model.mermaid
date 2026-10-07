@@ -16,8 +16,9 @@ erDiagram
   CLAIM ||--o{ RELATION : "is source of"
   CLAIM |o--o{ RELATION : "is target of"
   INFERENCE |o--o{ RELATION : "is target of"
-  FINDING }o--o{ CLAIM : "about"
-  FINDING }o--o{ INFERENCE : "about"
+  FINDING ||--o{ FINDING_TARGET : "is about"
+  CLAIM ||--o{ FINDING_TARGET : "referenced by"
+  INFERENCE ||--o{ FINDING_TARGET : "referenced by"
 
   DOCUMENT {
     uuid id PK
@@ -33,7 +34,8 @@ erDiagram
     int ordinal
     int char_start
     int char_end
-    string function "argumentative | narrative | descriptive | rhetorical | unclassified"
+    bool is_heading
+    string function "argumentative | narrative | descriptive | instructional | rhetorical | unclassified"
     float function_confidence
   }
 
@@ -43,7 +45,8 @@ erDiagram
     uuid revision_id FK "nullable until complete"
     string status "queued | running | completed | not_an_argument | failed"
     string current_stage
-    json model_config "provider and model per stage"
+    text summary "genre summary, required when not_an_argument"
+    json model_config "provider, model and prompt version per stage"
     text error
     timestamp started_at
     timestamp finished_at
@@ -74,7 +77,8 @@ erDiagram
     string kind "factual | legal_rule | normative | definitional | causal | predictive"
     string modality "asserted | probable | possible | hedged"
     string origin "stated | inferred | user_added"
-    string authority "citation, for legal_rule claims"
+    string attribution "author | opposing | third_party"
+    text citation "nullable; record or legal authority, cross-references resolved"
     float confidence
     bool is_thesis
   }
@@ -90,9 +94,9 @@ erDiagram
     uuid revision_id FK
     uuid conclusion_claim_id FK
     string scheme "deductive | causal | analogical | abductive | statistical"
-    string support "linked | convergent"
     string origin "stated | inferred | user_added"
-    json formalization "optional propositional form for deductive steps"
+    string attribution "author | opposing | third_party"
+    json formalization "propositional form; deductive steps only"
     float confidence
   }
 
@@ -114,8 +118,15 @@ erDiagram
   FINDING {
     uuid id PK
     uuid revision_id FK
-    string kind "invalid_step | unchecked_step | circularity | unsupported_claim | load_bearing | implicit_premise"
+    string kind "invalid_step | unchecked_step | circularity | unsupported_claim | load_bearing | implicit_premise | unconnected_claim"
     string severity "info | warning | critical"
     text explanation
     string produced_by "analyzer name and version"
+  }
+
+  FINDING_TARGET {
+    uuid finding_id FK
+    uuid claim_id FK "nullable; exactly one of claim_id / inference_id"
+    uuid inference_id FK "nullable; exactly one of claim_id / inference_id"
+    int ordinal "stable order; for circularity, position round the cycle"
   }

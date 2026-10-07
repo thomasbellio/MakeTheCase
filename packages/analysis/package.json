@@ -14,12 +14,14 @@
   },
   "dependencies": {
     "@make-your-case/domain": "workspace:*",
-    "graphology": "^0.26.0"
+    "graphology": "^0.26.0",
+    "graphology-components": "^1.5.4"
   },
   "devDependencies": {
     "@make-your-case/config": "workspace:*",
     "@types/node": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "yaml": "^2.9.1"
   }
 }

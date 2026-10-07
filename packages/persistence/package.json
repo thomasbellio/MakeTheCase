@@ -10,7 +10,10 @@
   "scripts": {
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "test:db": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
     "@make-your-case/domain": "workspace:*",

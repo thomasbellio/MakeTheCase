@@ -1,8 +1,8 @@
-/**
- * Drizzle schema, migrations, data mappers and repository implementations.
- *
- * Phase 1 (AGENTS.md section 7.4) fills this in. Drizzle row types must never
- * leak outside this package: mappers convert to and from the plain domain
- * objects in `@make-your-case/domain`.
- */
-export {};
+export * from './db.ts';
+export * as schema from './schema/index.ts';
+export * from './mappers/entities.ts';
+export * from './mappers/argument-graph.ts';
+export * from './repositories/document-repository.ts';
+export * from './repositories/span-repository.ts';
+export * from './repositories/revision-repository.ts';
+export * from './repositories/analysis-run-repository.ts';

@@ -17,7 +17,8 @@
     "lint:boundaries": "node scripts/check-boundaries.mjs",
     "db:up": "docker compose up -d --wait",
     "db:down": "docker compose down",
-    "db:logs": "docker compose logs -f postgres"
+    "db:logs": "docker compose logs -f postgres",
+    "test:db": "turbo run test:db"
   },
   "devDependencies": {
     "@make-your-case/config": "workspace:*",

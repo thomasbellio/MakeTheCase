@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { entails, MAX_ATOMS } from './entail.ts';
-import type { Formula } from './formula.ts';
+import type { Formula } from '@make-your-case/domain';
 
 const P: Formula = { atom: 'P' };
 const Q: Formula = { atom: 'Q' };

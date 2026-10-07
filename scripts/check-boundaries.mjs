@@ -31,6 +31,10 @@ const EXPECTED = [
     fixture: 'apps/web/src/client/__boundaries__/imports-persistence.boundary-fixture.ts',
     why: 'web client code may import domain types only',
   },
+  {
+    fixture: 'packages/persistence/src/__boundaries__/imports-pipeline.boundary-fixture.ts',
+    why: 'persistence depends on domain and drizzle only',
+  },
 ];
 
 let failures = 0;
