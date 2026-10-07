@@ -1,6 +1,7 @@
 export * from './ids.ts';
 export * from './enums.ts';
 export * from './config/env.ts';
+export * from './config/llm.ts';
 
 export * from './entities/document.ts';
 export * from './entities/span.ts';

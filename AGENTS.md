@@ -404,14 +404,16 @@ Severity summary: `critical` — circularity, invalid_step, load-bearing implici
 
 **Goal:** a LangGraph workflow that turns pasted Markdown into a validated, analyzed, persisted `ArgumentGraph`, running in a background worker with live progress.
 
-### 8.1 Provider abstraction (`packages/pipeline/src/llm/`)
+### 8.1 Provider abstraction (`packages/pipeline/src/llm/`) — **complete**
 
-- Define our own `ModelProvider` port: `getChatModel(stage: PipelineStage): BaseChatModel`.
-- A factory builds models from configuration (`LLM_PROVIDER`, per-stage model overrides). Implement Anthropic and OpenAI now; leave Bedrock (`@langchain/aws`) and an OpenAI-compatible endpoint (for self-hosted models) as documented, easily added options.
-- All structured output uses `withStructuredOutput(zodSchema)`. Stage code must never depend on provider-specific features.
-- `Formula` is recursive, so its Zod schema compiles to a self-`$ref`. Provider support for recursive refs in strict structured-output mode is inconsistent; a depth-bounded `Formula` variant may be needed for the reconstruct prompt, widened on receipt. Verify before relying on the recursive schema.
+- Configuration resolves per stage. `LLM_PROVIDER` and `LLM_MODEL_DEFAULT` apply to every stage; the optional `LLM_PROVIDER_<STAGE>` and `LLM_MODEL_<STAGE>` override them for `classify`, `extract`, `reconstruct` and `judge`. `resolveLlmConfig(env, stages)` (`packages/domain/src/config/llm.ts`) returns the provider, model and API key for each requested stage, or every problem at once, naming variables but never values. `parseEnv` stays key-free because `apps/web` never calls a model; the worker resolves the three pipeline stages, the eval harness adds `judge`.
+- `ModelProvider` port: `getChatModel(stage: LlmStage): BaseChatModel` plus `describe()`, the secret-free `{ stage: { provider, model } }` recorded in `AnalysisRun.model_config`. `createModelProvider(config)` builds `ChatAnthropic` or `ChatOpenAI`; an exhaustive `switch` makes a new provider (Bedrock via `@langchain/aws`, an OpenAI-compatible endpoint for self-hosted models) one new case plus its key variable. No sampling parameters are set: several current models reject `temperature`.
+- Stage code calls models only through `invokeStructured(model, schema, messages, name)`, a wrapper over `withStructuredOutput(zodSchema)`. It never depends on provider-specific features.
+- Models produce **wire schemas** (`packages/pipeline/src/schemas/wire.ts`), not domain schemas: strict structured-output modes reject brands, refinements, defaults and optional fields, so every field is required (nullable where absent), IDs are plain strings, and occurrences and premise IDs nest under their claims and inferences. `reconstructResponseToDraft` flattens them into an `ArgumentGraphDraft`; field-level problems surface as `validateArgumentGraph` errors and go back to the model.
+- `Formula` is recursive, and a recursive schema compiles to a self-`$ref` that providers support inconsistently, while a depth-bounded copy grows exponentially. Models therefore emit a formalization as a **flat node list** (`{ id, op, atom, args }` with root IDs per premise and conclusion), which `buildFormula` turns into the tree, rejecting dangling references, cycles and bad arity as validation errors.
+- `pnpm --filter @make-your-case/pipeline smoke:structured` makes one real call per configured stage to confirm the provider accepts the wire schemas. It is billed and never runs in `pnpm test`.
 - Record the provider and model used per stage in `AnalysisRun.model_config`.
-- Provide a `FakeModelProvider` returning scripted structured responses, for tests.
+- `FakeModelProvider` (`@make-your-case/pipeline/testing`) returns scripted structured responses or errors from a per-stage queue, parses each through the caller's schema, and records every prompt for assertions.
 
 ### 8.2 Workflow graph
 
@@ -585,6 +587,10 @@ LLM_MODEL_CLASSIFY=               # optional per-stage overrides
 LLM_MODEL_EXTRACT=
 LLM_MODEL_RECONSTRUCT=
 LLM_MODEL_JUDGE=                  # eval harness only
+LLM_PROVIDER_CLASSIFY=            # optional per-stage provider overrides
+LLM_PROVIDER_EXTRACT=
+LLM_PROVIDER_RECONSTRUCT=
+LLM_PROVIDER_JUDGE=               # eval harness only
 MAX_DOCUMENT_CHARS=200000
 PIPELINE_MAX_VALIDATION_RETRIES=3
 GATE_MIN_ARGUMENTATIVE_SPANS=2
@@ -593,6 +599,8 @@ TEST_DATABASE_URL=postgres://...   # `pnpm test:db` only; a separate database (�
 
 Every variable must also be declared in `turbo.json`'s `globalEnv`, or Turborepo's strict env mode
 strips it from tasks (§3).
+
+Each stage's provider is `LLM_PROVIDER_<STAGE>` or else `LLM_PROVIDER`, and its model is `LLM_MODEL_<STAGE>` or else `LLM_MODEL_DEFAULT`; the API key is the one for the resolved provider. Blank values count as unset.
 
 Configuration is parsed and validated with Zod at startup in each app; fail fast on invalid config. Secrets are never logged.
 

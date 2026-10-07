@@ -4,13 +4,15 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./testing": "./src/testing/index.ts"
   },
   "types": "./src/index.ts",
   "scripts": {
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "smoke:structured": "node --env-file-if-exists=../../.env scripts/smoke-structured.ts"
   },
   "dependencies": {
     "@langchain/anthropic": "^1.5.12",

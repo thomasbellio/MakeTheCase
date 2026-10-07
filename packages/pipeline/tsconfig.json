@@ -6,6 +6,6 @@
     // typechecked alongside src.
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "include": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.ts"],
   "exclude": ["src/**/__boundaries__/**"]
 }

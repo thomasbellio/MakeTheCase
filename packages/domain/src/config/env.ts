@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { llmProviderSchema } from './llm.ts';
 
 /**
  * Environment configuration, shared by every app.
@@ -7,14 +8,20 @@ import { z } from 'zod';
  * startup in each app, failing fast on invalid values. Defining the schema once
  * here keeps the two composition roots (`apps/web`, `apps/worker`) in agreement.
  *
- * The LLM settings are optional in v1 so the web app and worker start without
- * any API key. Phase 2 introduces a stricter, provider-aware refinement for the
- * pipeline, which is the only consumer that actually needs a key.
+ * The LLM settings are optional here so the web app, which never calls a
+ * model, starts without any API key. Consumers that do call a model resolve
+ * and check them with `resolveLlmConfig` (`./llm.ts`).
  */
+// `.env.example` leaves unused overrides blank, which arrive as empty strings.
+const optionalProvider = z.preprocess(
+  (value) => (value === '' ? undefined : value),
+  llmProviderSchema.optional(),
+);
+
 export const envSchema = z.object({
   DATABASE_URL: z.url('DATABASE_URL must be a valid postgres:// URL'),
 
-  LLM_PROVIDER: z.enum(['anthropic', 'openai']).default('anthropic'),
+  LLM_PROVIDER: llmProviderSchema.default('anthropic'),
   ANTHROPIC_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
 
@@ -24,6 +31,12 @@ export const envSchema = z.object({
   LLM_MODEL_RECONSTRUCT: z.string().optional(),
 
   LLM_MODEL_JUDGE: z.string().optional(),
+
+  // Optional per-stage provider overrides; each falls back to LLM_PROVIDER.
+  LLM_PROVIDER_CLASSIFY: optionalProvider,
+  LLM_PROVIDER_EXTRACT: optionalProvider,
+  LLM_PROVIDER_RECONSTRUCT: optionalProvider,
+  LLM_PROVIDER_JUDGE: optionalProvider,
 
   MAX_DOCUMENT_CHARS: z.coerce.number().int().positive().default(200_000),
   PIPELINE_MAX_VALIDATION_RETRIES: z.coerce.number().int().min(0).default(3),
