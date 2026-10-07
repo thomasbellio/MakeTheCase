@@ -126,6 +126,34 @@ describe('reconstructResponseToDraft', () => {
     ]);
   });
 
+  it('reports a formalization whose conclusion is linked to no premise', () => {
+    const inference: WireInference = {
+      ...baseInference,
+      formalization: {
+        atoms: [
+          { name: 'P', claim_id: 'c1' },
+          { name: 'Q', claim_id: 'c2' },
+          { name: 'S', claim_id: 'c4' },
+          { name: 'R', claim_id: 'c3' },
+        ],
+        nodes: [
+          { id: 'f1', op: 'atom', atom: 'P', args: [] },
+          { id: 'f2', op: 'atom', atom: 'Q', args: [] },
+          { id: 'f3', op: 'atom', atom: 'S', args: [] },
+          { id: 'f4', op: 'atom', atom: 'R', args: [] },
+        ],
+        premise_roots: ['f1', 'f2', 'f3'],
+        conclusion_root: 'f4',
+      },
+    };
+    const { draft, issues } = reconstructResponseToDraft({ ...fixture05, inferences: [inference] });
+
+    expect(draft.inferences[0]?.formalization).toBeNull();
+    expect(issues.map((issue) => issue.message)).toEqual([
+      expect.stringMatching(/^Inference i1: the conclusion's atom "R" appears in no premise/),
+    ]);
+  });
+
   it('leaves malformed IDs for validation to report back to the model', () => {
     const response = {
       ...fixture05,

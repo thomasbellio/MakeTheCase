@@ -107,7 +107,27 @@ function buildFormalization(wire: WireFormalization): Built<Formalization<LocalI
   const conclusion = buildFormula(wire.nodes, wire.conclusion_root);
   if (!conclusion.ok) return { ok: false, message: conclusion.message };
 
+  // A conclusion atom that no premise mentions makes the step invalid by
+  // construction: nothing links the premises to it. That is a modelling
+  // error, not a finding about the author, so it goes back to the model.
+  const premiseAtoms = new Set(premises.flatMap(atomsOf));
+  const unlinked = atomsOf(conclusion.formula).filter((atom) => !premiseAtoms.has(atom));
+  if (unlinked.length > 0) {
+    return {
+      ok: false,
+      message: `the conclusion's atom ${unlinked.map((atom) => `"${atom}"`).join(', ')} appears in no premise, so nothing links the premises to the conclusion. Formalize the rule the step applies as an implies over the premises' atoms; if the author never states the rule or fact that links them, add it as an inferred premise; if the step is not a propositional rule application, set formalization to null`,
+    };
+  }
+
   return { ok: true, value: { atoms, premises, conclusion: conclusion.formula } };
+}
+
+function atomsOf(formula: Formula): string[] {
+  if ('atom' in formula) return [formula.atom];
+  if ('not' in formula) return atomsOf(formula.not);
+  if ('and' in formula) return formula.and.flatMap(atomsOf);
+  if ('or' in formula) return formula.or.flatMap(atomsOf);
+  return formula.implies.flatMap(atomsOf);
 }
 
 // Unchecked by design; see the doc comment on `reconstructResponseToDraft`.

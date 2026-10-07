@@ -123,6 +123,10 @@ const policies = [
         'zod',
         'zod/*',
         '@langchain/*',
+        // Markdown parsing for segmentation.
+        'unified',
+        'remark-parse',
+        'mdast',
       ),
     ],
   },

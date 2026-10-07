@@ -435,6 +435,16 @@ segment → classify → [gate] → extract → reconstruct → validate ─┬�
 | `analyze` | deterministic | Run `analyzeArgumentGraph`. |
 | `persist` | I/O | Map local IDs to UUIDs; save spans, revision, and graph in one transaction via injected repositories; link revision to run. |
 
+Stage logic (`packages/pipeline/src/stages/`, prompts in `src/prompts/`) — **complete**; the workflow graph wiring them together is not yet built:
+
+- `segmentDocument` parses with `remark-parse`, splits paragraphs with `Intl.Segmenter`, then rejoins false breaks inside legal citations ("Smith v. Jones", "Lab. Code § 22", "Okafor Decl. ¶ 3"): a piece starting with a lowercase letter, digit, `§` or `¶` continues the previous one, as does a piece following a known abbreviation or an initial. Each heading is one span. List markers are excluded from offsets but kept as pipeline-side context (`SegmentedSpan.listMarker`) and rendered into prompts, so extraction can resolve "Undisputed Fact ¶ 17".
+- `extract` output stays in wire form (`ExtractResponse`); it is reconstruct's input and the reference for `checkPreservation`, which turns any extracted occurrence missing from the reconstruction (matched by span and attribution), or any lost citation, into a validation error. Matching is not by exact wording: merging moves occurrences between claim IDs and models rarely reproduce surface text exactly.
+- `reconstructResponseToDraft` also rejects a formalization whose conclusion has an atom no premise mentions: such a step is invalid by construction, so it is a modelling error to retry, not an `invalid_step` about the author.
+- `retryFeedback` appends hints to validation messages for errors with a known model cause (an extra premise formula almost always means a rule was formalized without being added as a premise).
+- `invokeStructured` requests the raw response alongside the parsed one. When parsing fails it repairs fields that hold JSON text instead of JSON (a recurring failure on large nested outputs), and otherwise repeats the request, up to three attempts, before throwing `StructuredOutputError`, whose message names schema paths but never model output.
+- Prompts must not use fixture content as examples, or the eval measures memorization: worked examples come from unrelated domains.
+- `pnpm --filter @make-your-case/pipeline try:stages <file.md>` runs the stages in sequence with the retry loop and prints claims and findings. It is a billed development aid for prompt work.
+
 - Validation **warnings** (e.g. unconnected claims) never trigger a retry; only errors do.
 - State is a typed LangGraph state annotation; every node is a separately testable function.
 - Use the Postgres checkpointer so a crashed run can resume.
