@@ -429,7 +429,7 @@ Severity summary: `critical` — circularity, invalid_step, load-bearing implici
 - Stage code calls models only through `invokeStructured(model, schema, messages, name)`, a wrapper over `withStructuredOutput(zodSchema)`. It never depends on provider-specific features.
 - Models produce **wire schemas** (`packages/pipeline/src/schemas/wire.ts`), not domain schemas: strict structured-output modes reject brands, refinements, defaults and optional fields, so every field is required (nullable where absent), IDs are plain strings, and occurrences and premise IDs nest under their claims and inferences. `reconstructResponseToDraft` flattens them into an `ArgumentGraphDraft`; field-level problems surface as `validateArgumentGraph` errors and go back to the model.
 - `Formula` is recursive, and a recursive schema compiles to a self-`$ref` that providers support inconsistently, while a depth-bounded copy grows exponentially. Models therefore emit a formalization as a **flat node list** (`{ id, op, atom, args }` with root IDs per premise and conclusion), which `buildFormula` turns into the tree, rejecting dangling references, cycles and bad arity as validation errors.
-- `pnpm --filter @make-your-case/pipeline smoke:structured` makes one real call per configured stage to confirm the provider accepts the wire schemas. It is billed and never runs in `pnpm test`.
+- `pnpm --filter @make-your-case/pipeline smoke:structured` makes one real call per configured stage to confirm the provider accepts the wire schemas. It is billed, never runs in `pnpm test`, and is for the maintainer to run (§12).
 - Record the provider and model used per stage in `AnalysisRun.model_config`.
 - `FakeModelProvider` (`@make-your-case/pipeline/testing`) returns scripted structured responses or errors from a per-stage queue, parses each through the caller's schema, and records every prompt for assertions.
 
@@ -466,7 +466,10 @@ Stage logic (`packages/pipeline/src/stages/`, prompts in `src/prompts/`) and the
 - `extract` output stays in wire form (`ExtractResponse`); it is reconstruct's input and the reference for `checkPreservation`, which turns any extracted occurrence missing from the reconstruction (matched by span and attribution), or any lost citation, into a validation error. Matching is not by exact wording: merging moves occurrences between claim IDs and models rarely reproduce surface text exactly.
 - `reconstructResponseToDraft` also rejects a formalization whose conclusion has an atom no premise mentions: such a step is invalid by construction, so it is a modelling error to retry, not an `invalid_step` about the author.
 - `retryFeedback` appends hints to validation messages for errors with a known model cause (an extra premise formula almost always means a rule was formalized without being added as a premise).
-- `invokeStructured` requests the raw response alongside the parsed one. When parsing fails it repairs fields that hold JSON text instead of JSON (a recurring failure on large nested outputs), and otherwise repeats the request, up to three attempts, before throwing `StructuredOutputError`, whose message names schema paths but never model output.
+- `invokeStructured` requests the raw response alongside the parsed one, because a response that fails the schema is usually recoverable. The recurring failure on large nested outputs is a top-level array field arriving as JSON *text* rather than JSON, and the damage takes several shapes: the string may hold only that field's value, or the object's remaining fields as well, sometimes with the closing brace or a trailing comma attached; sometimes the whole argument object arrives as text; sometimes the output simply stops mid-element. Rather than guess, `repairCandidates` proposes every plausible reading and **the schema decides** — a wrong candidate just fails to validate. Lossless readings are exhausted before any that salvaged a truncated response, so discarding part of the output is a last resort and not an accident of ordering.
+- A truncated response is salvaged by dropping the incomplete trailing element. That loses data deliberately: a reconstruction missing its last claim fails `validateArgumentGraph` with a specific complaint the retry loop can act on, whereas an unparseable response fails the whole run.
+- **A retry is not the same request.** Asking again identically invites the same answer, which is why a deterministic malformation used to exhaust all three attempts; so each retry carries a short note naming the schema paths that did not match, or asking for a more concise response when the output was cut short. The note names paths only — never the model's output, which can contain document text (§11).
+- `StructuredOutputError` names schema paths, never model output, and says when the output was cut short, because truncation needs a different fix (a larger budget or a shorter prompt) from malformation (a prompt or schema change).
 - Prompts must not use fixture content as examples, or the eval measures memorization: worked examples come from unrelated domains.
 - `pnpm --filter @make-your-case/pipeline try:stages <file.md>` runs the stages in sequence with the retry loop and prints claims and findings. It is a billed development aid for prompt work.
 
@@ -624,12 +627,19 @@ a table of model-name prefixes, and a model the table does not know falls back t
 now set explicitly (§8.1). Fixture 05, the canonical implicit-premise case, passes all its hard
 checks as a result.
 
-Open, measured on fixture 01 over five attempts (`--repeat 5`), which passed **0 of 5**:
+Open, measured on fixture 01 over five attempts (`--repeat 5`) against `claude-haiku-4-5`, which
+passed **0 of 5**. Both may behave differently on a more capable model, which is how they will next
+be measured (§12):
 
-1. **Reconstruct's structured output is unreliable — 3 of 5 attempts.** A top-level array field
-   (`claims` on two attempts, `inferences` on another) arrives as a JSON *string* and
-   `repairStringifiedFields` cannot recover it, three attempts in a row, so the run errors. This is
-   the dominant blocker and it is a code problem in the wire schema or the repair, not prompt wording.
+1. ~~**Reconstruct's structured output is unreliable — 3 of 5 attempts.**~~ **Addressed, unmeasured.**
+   A top-level array field (`claims` on two attempts, `inferences` on another) arrived as a JSON
+   *string* that the repair could not recover, three attempts running. Two causes were found by
+   reading the code: the repair handled only two of the shapes the damage takes (it broke on a
+   trailing brace, a trailing comma, a stringified argument object, a nested whole response, and
+   truncation), and a failed attempt repeated the *identical* request, so a deterministic
+   malformation was guaranteed to fail all three times. Both are fixed and covered by deterministic
+   tests over hand-built payloads (§8.1). Whether the error rate is actually gone needs a billed
+   sweep, which is the maintainer's to run (§12).
 2. **Formalizations do not entail their conclusions — both attempts that completed.** Fixture 01 is
    a valid rule application and its key forbids `invalid_step`, but the step the model formalizes is
    propositionally invalid, which also breaks `findings_max_severity: info`.
@@ -736,6 +746,7 @@ fresh clone has an empty `DATABASE_URL` database until `db:migrate` is run.
 
 ## 12. Working agreement for agents
 
+- **Do not run anything that calls a real model.** `pnpm eval`, `pnpm --filter @make-your-case/pipeline smoke:structured` and `try:stages` are billed, and their results vary run to run, so an agent cannot use them to judge its own work. Fix pipeline and prompt problems by reasoning about the code and covering the behaviour with deterministic tests (`FakeModelProvider`, hand-built payloads). The maintainer runs the billed sweeps, by hand, and will do so against a more capable model during the UI phase — several of the open issues in §8.8 may simply not reproduce there, so do not design around them as if they were permanent.
 - Work phase by phase. Do not start a phase until the previous phase's acceptance criteria pass.
 - Before writing code that uses an external library, check its current documentation.
 - If a requirement here is ambiguous or conflicts with what you find in the code, stop and ask rather than guessing.
