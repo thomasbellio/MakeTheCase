@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "smoke:structured": "node --env-file-if-exists=../../.env scripts/smoke-structured.ts",
-    "try:stages": "node --env-file-if-exists=../../.env scripts/try-stages.ts"
+    "try:stages": "node --env-file-if-exists=../../.env scripts/try-stages.ts",
+    "test:db": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
     "@langchain/anthropic": "^1.5.12",
@@ -31,6 +32,8 @@
     "@make-your-case/config": "workspace:*",
     "@types/mdast": "^4.0.4",
     "@types/node": "catalog:",
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.1",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

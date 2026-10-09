@@ -15,5 +15,6 @@ export * from './entities/finding.ts';
 export * from './graph/formula.ts';
 export * from './graph/view.ts';
 export * from './graph/argument-graph.ts';
+export * from './graph/materialize.ts';
 
 export * from './repositories/index.ts';

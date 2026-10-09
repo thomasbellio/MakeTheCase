@@ -8,3 +8,4 @@ export * from './llm/index.ts';
 export * from './schemas/index.ts';
 export * from './prompts/index.ts';
 export * from './stages/index.ts';
+export * from './workflow/index.ts';

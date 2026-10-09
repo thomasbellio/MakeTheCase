@@ -1,7 +1,6 @@
 export * from './db.ts';
 export * as schema from './schema/index.ts';
 export * from './mappers/entities.ts';
-export * from './mappers/argument-graph.ts';
 export * from './repositories/document-repository.ts';
 export * from './repositories/span-repository.ts';
 export * from './repositories/revision-repository.ts';

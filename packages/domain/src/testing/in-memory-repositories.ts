@@ -1,4 +1,4 @@
-import type { DocumentId, RevisionId, RunId } from '../ids.ts';
+import type { DocumentId, LocalId, RevisionId, RunId, SpanId } from '../ids.ts';
 import { newId } from '../ids.ts';
 import type { Document, DocumentSummary, NewDocument } from '../entities/document.ts';
 import type { Span } from '../entities/span.ts';
@@ -10,7 +10,9 @@ import type {
   RunStatusUpdate,
 } from '../entities/run.ts';
 import type { ArgumentGraph } from '../graph/argument-graph.ts';
+import { assignIds, draftToGraph } from '../graph/materialize.ts';
 import type {
+  AnalysisResult,
   AnalysisRunRepository,
   DocumentRepository,
   Repositories,
@@ -81,6 +83,16 @@ export class InMemoryRevisionRepository implements RevisionRepository {
   /** Insertion order per document, so `getLatestForDocument` has a defined answer. */
   readonly byDocument = new Map<DocumentId, RevisionId[]>();
 
+  /**
+   * `saveAnalysisResult` touches spans and runs as well as revisions, as the
+   * Drizzle implementation does in one transaction. Pass the fakes it should
+   * write to; `createInMemoryRepositories` wires this up.
+   */
+  constructor(
+    private readonly spans: InMemorySpanRepository = new InMemorySpanRepository(),
+    private readonly runs: InMemoryAnalysisRunRepository = new InMemoryAnalysisRunRepository(),
+  ) {}
+
   saveArgumentGraph(graph: ArgumentGraph): Promise<RevisionId> {
     this.graphs.set(graph.revision_id, graph);
     return Promise.resolve(graph.revision_id);
@@ -94,6 +106,37 @@ export class InMemoryRevisionRepository implements RevisionRepository {
     const revisions = this.byDocument.get(documentId);
     const latest = revisions?.at(-1);
     return Promise.resolve(latest === undefined ? null : (this.graphs.get(latest) ?? null));
+  }
+
+  async saveAnalysisResult(result: AnalysisResult): Promise<RevisionId> {
+    const run = await this.runs.getById(result.runId);
+    if (run === null) throw new Error(`no run ${result.runId}`);
+    if (run.revision_id !== null) return run.revision_id;
+
+    // Keep the ID of any span already stored at the same ordinal.
+    const existing = new Map(
+      (await this.spans.listByDocument(result.documentId)).map((span) => [span.ordinal, span]),
+    );
+    const spanIds = new Map<LocalId, SpanId>();
+    const stored: Span[] = result.spans.map((draft) => {
+      const id = existing.get(draft.ordinal)?.id ?? newId<SpanId>();
+      spanIds.set(draft.id, id);
+      return { ...draft, id, document_id: result.documentId };
+    });
+    const kept = [...existing.values()].filter((span) => span.ordinal >= stored.length);
+    await this.spans.saveAll(result.documentId, [...stored, ...kept]);
+
+    const revisionId = newId<RevisionId>();
+    const graph = draftToGraph(
+      result.draft,
+      result.findings,
+      revisionId,
+      assignIds(result.draft, spanIds),
+    );
+    await this.saveArgumentGraph(graph);
+    this.linkToDocument(result.documentId, revisionId);
+    await this.runs.updateStatus(result.runId, { revision_id: revisionId });
+    return revisionId;
   }
 
   /** Test helper: records which document a revision belongs to. */
@@ -174,10 +217,12 @@ export function createInMemoryRepositories(): Repositories & {
   readonly revisions: InMemoryRevisionRepository;
   readonly runs: InMemoryAnalysisRunRepository;
 } {
+  const spans = new InMemorySpanRepository();
+  const runs = new InMemoryAnalysisRunRepository();
   return {
     documents: new InMemoryDocumentRepository(),
-    spans: new InMemorySpanRepository(),
-    revisions: new InMemoryRevisionRepository(),
-    runs: new InMemoryAnalysisRunRepository(),
+    spans,
+    revisions: new InMemoryRevisionRepository(spans, runs),
+    runs,
   };
 }

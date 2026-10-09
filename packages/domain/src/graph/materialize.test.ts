@@ -7,8 +7,8 @@ import {
   type LocalId,
   type RevisionId,
   type SpanId,
-} from '@make-your-case/domain';
-import { assignIds, draftToGraph } from '../src/mappers/argument-graph.ts';
+} from '../index.ts';
+import { assignIds, draftToGraph } from './materialize.ts';
 
 /**
  * Unit tests for the local-ID to UUID mapping (AGENTS.md section 7.4). Pure, so

@@ -1,27 +1,26 @@
 import {
   newId,
-  type AnalysisFinding,
-  type ArgumentGraph,
-  type ArgumentGraphDraft,
   type ClaimId,
-  type Finding,
   type FindingId,
-  type FindingTarget,
-  type Formalization,
   type InferenceId,
   type LocalId,
   type RelationId,
   type RevisionId,
   type SpanId,
-} from '@make-your-case/domain';
+} from '../ids.ts';
+import type { AnalysisFinding, Finding, FindingTarget } from '../entities/finding.ts';
+import type { Formalization } from './formula.ts';
+import type { ArgumentGraph, ArgumentGraphDraft } from './argument-graph.ts';
 
 /**
  * Local ID -> UUID, one map per entity kind.
  *
- * This lives in persistence rather than pipeline because assigning persistent
- * identity is a persistence concern: the pipeline works in local IDs from
- * segmentation right through analysis (AGENTS.md section 5.3) and never needs
- * to know what a row's UUID will be.
+ * Only repository implementations call this: the pipeline works in local IDs
+ * from segmentation right through analysis (AGENTS.md section 5.3) and never
+ * needs to know what a row's UUID will be. It lives in `domain` rather than
+ * `persistence` because it is pure and both implementations of
+ * `RevisionRepository.saveAnalysisResult` — Drizzle and the in-memory fake —
+ * need it.
  */
 export interface IdMap {
   readonly claim: ReadonlyMap<LocalId, ClaimId>;
