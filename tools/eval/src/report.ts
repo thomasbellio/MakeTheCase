@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { LlmConfigDescription } from '@make-your-case/domain';
 import type { KeyResult } from '@make-your-case/answer-keys';
-import type { FixtureResult } from './run-fixture.ts';
+import { flaky, representative, statusBreakdown, type FixtureRuns } from './aggregate.ts';
 
 /**
  * The run's record (AGENTS.md section 8.7): `report.json` for machines,
@@ -18,35 +18,42 @@ export interface EvalReport {
     readonly fixtures: readonly string[];
     readonly judge: boolean;
     readonly databaseUrlOverridden: boolean;
+    /** Attempts per fixture. Above 1, the run measures rates rather than outcomes. */
+    readonly repeat: number;
   };
   readonly models: LlmConfigDescription;
   readonly promptVersions: Readonly<Record<string, string>>;
   readonly totals: {
     readonly fixtures: number;
-    readonly passed: number;
+    /** Fixtures that passed every attempt. */
+    readonly stable: number;
+    readonly attempts: number;
+    readonly attemptsPassed: number;
     readonly errored: number;
-    readonly statusMismatched: number;
     readonly hard: Readonly<Record<KeyResult['status'], number>>;
     readonly soft: Readonly<Record<string, number>>;
   };
-  readonly fixtures: readonly FixtureResult[];
+  readonly fixtures: readonly FixtureRuns[];
 }
 
 export function buildReport(args: {
   readonly startedAt: Date;
   readonly finishedAt: Date;
-  readonly results: readonly FixtureResult[];
+  readonly results: readonly FixtureRuns[];
   readonly judge: boolean;
   readonly databaseUrlOverridden: boolean;
+  readonly repeat: number;
   readonly models: LlmConfigDescription;
   readonly promptVersions: Readonly<Record<string, string>>;
 }): EvalReport {
   const hard: Record<KeyResult['status'], number> = { pass: 0, fail: 0, skipped: 0, explained: 0 };
   const soft: Record<string, number> = {};
 
-  for (const result of args.results) {
-    for (const row of result.hard) hard[row.status] += 1;
-    for (const grade of result.soft) soft[grade.grade] = (soft[grade.grade] ?? 0) + 1;
+  for (const runs of args.results) {
+    for (const attempt of runs.attempts) {
+      for (const row of attempt.hard) hard[row.status] += 1;
+      for (const grade of attempt.soft) soft[grade.grade] = (soft[grade.grade] ?? 0) + 1;
+    }
   }
 
   return {
@@ -58,14 +65,16 @@ export function buildReport(args: {
       fixtures: args.results.map((r) => r.id),
       judge: args.judge,
       databaseUrlOverridden: args.databaseUrlOverridden,
+      repeat: args.repeat,
     },
     models: args.models,
     promptVersions: args.promptVersions,
     totals: {
       fixtures: args.results.length,
-      passed: args.results.filter((r) => r.passed).length,
-      errored: args.results.filter((r) => r.error !== null).length,
-      statusMismatched: args.results.filter((r) => !r.statusMatched).length,
+      stable: args.results.filter((r) => r.stable).length,
+      attempts: args.results.reduce((n, r) => n + r.attempts.length, 0),
+      attemptsPassed: args.results.reduce((n, r) => n + r.passed, 0),
+      errored: args.results.reduce((n, r) => n + r.errored, 0),
       hard,
       soft,
     },
@@ -85,20 +94,21 @@ const MARK: Readonly<Record<KeyResult['status'], string>> = {
 export function renderReportMarkdown(report: EvalReport): string {
   const out: string[] = [];
   const t = report.totals;
+  const repeated = report.selection.repeat > 1;
 
   out.push(`# Eval report — ${report.startedAt}`);
   out.push('');
   out.push(
-    `${String(t.fixtures)} fixtures · **${String(t.passed)} passed** · ${String(t.errored)} errored · ` +
-      `hard ${String(t.hard.pass)} pass / ${String(t.hard.fail)} fail / ${String(t.hard.explained)} explained / ${String(t.hard.skipped)} skipped`,
+    `${String(t.fixtures)} fixtures × ${String(report.selection.repeat)} attempt(s) · ` +
+      `**${String(t.stable)} of ${String(t.fixtures)} passed every attempt** · ` +
+      `${String(t.attemptsPassed)} of ${String(t.attempts)} attempts passed · ${String(t.errored)} errored`,
   );
-  if (report.selection.judge) {
-    const soft = Object.entries(report.totals.soft)
-      .map(([grade, count]) => `${String(count)} ${grade}`)
-      .join(', ');
-    out.push('');
-    out.push(`Soft grades: ${soft === '' ? 'none' : soft}`);
-  } else {
+  out.push('');
+  out.push(
+    `Hard checks across all attempts: ${String(t.hard.pass)} pass / ${String(t.hard.fail)} fail / ` +
+      `${String(t.hard.explained)} explained / ${String(t.hard.skipped)} skipped`,
+  );
+  if (!report.selection.judge) {
     out.push('');
     out.push('The judge did not run (`--no-judge`), so no soft expectation was graded.');
   }
@@ -115,22 +125,35 @@ export function renderReportMarkdown(report: EvalReport): string {
   }
   out.push('');
 
-  // Failures first: the reason anyone opens this file.
-  const failures = report.fixtures.flatMap((fixture) => [
-    ...(fixture.statusMatched
-      ? []
-      : [`| ${fixture.id} | _status_ | ${fixture.expectedStatus} | ${fixture.actualStatus} |`]),
-    ...fixture.hard
-      .filter((row) => row.status === 'fail')
-      .map(
-        (row) => `| ${fixture.id} | \`${row.key}\` | pass | ${'reason' in row ? row.reason : ''} |`,
-      ),
-    ...(fixture.error === null
-      ? []
-      : [
-          `| ${fixture.id} | _errored_ | — | ${fixture.error.name} in ${fixture.error.stage ?? 'setup'}: ${fixture.error.message} |`,
-        ]),
-  ]);
+  // Failures first: the reason anyone opens this file. Deduplicated across
+  // attempts, since a repeated sweep would otherwise list the same one N times.
+  const failures: string[] = [];
+  for (const runs of report.fixtures) {
+    const reported = new Set<string>();
+
+    for (const attempt of runs.attempts) {
+      if (!attempt.statusMatched && !reported.has('_status')) {
+        reported.add('_status');
+        failures.push(
+          `| ${runs.id} | _status_ | ${runs.expectedStatus} | ${attempt.actualStatus} |`,
+        );
+      }
+
+      for (const row of attempt.hard) {
+        if (row.status !== 'fail' || reported.has(row.key)) continue;
+        reported.add(row.key);
+        failures.push(`| ${runs.id} | \`${row.key}\` | pass | ${row.reason} |`);
+      }
+
+      if (attempt.error !== null && !reported.has('_error')) {
+        reported.add('_error');
+        const where = attempt.error.stage ?? 'setup';
+        failures.push(
+          `| ${runs.id} | _errored_ | — | ${attempt.error.name} in ${where}: ${attempt.error.message} |`,
+        );
+      }
+    }
+  }
 
   out.push('## Failures');
   out.push('');
@@ -145,53 +168,102 @@ export function renderReportMarkdown(report: EvalReport): string {
 
   out.push('## Summary');
   out.push('');
-  out.push('| fixture | status | hard | claims | inf | rel | findings | retries | duration |');
-  out.push('|---|---|---|---|---|---|---|---|---|');
-  for (const f of report.fixtures) {
-    const passed = f.hard.filter((r) => r.status !== 'fail').length;
-    const c = f.counts;
+  out.push(`| fixture | passed | statuses | hard failures | retries |`);
+  out.push('|---|---|---|---|---|');
+  for (const runs of report.fixtures) {
+    const failures = [
+      ...new Set(
+        runs.attempts.flatMap((a) => a.hard.filter((r) => r.status === 'fail').map((r) => r.key)),
+      ),
+    ];
+    const retries = runs.attempts.map((a) => a.retries);
     out.push(
-      `| ${f.id} | ${f.statusMatched ? '✓' : '✗'} ${f.actualStatus} | ${String(passed)}/${String(f.hard.length)} | ` +
-        `${c === null ? '—' : String(c.claims)} | ${c === null ? '—' : String(c.inferences)} | ` +
-        `${c === null ? '—' : String(c.relations)} | ${c === null ? '—' : String(c.findings)} | ` +
-        `${String(f.retries)} | ${seconds(f.durationMs)} |`,
+      `| ${runs.id} | ${runs.stable ? '**' : ''}${String(runs.passed)}/${String(runs.attempts.length)}${runs.stable ? '**' : ''} | ` +
+        `${statusBreakdown(runs)} | ${failures.length === 0 ? '—' : failures.map((f) => `\`${f}\``).join(', ')} | ` +
+        `${Math.min(...retries) === Math.max(...retries) ? String(retries[0] ?? 0) : `${String(Math.min(...retries))}–${String(Math.max(...retries))}`} |`,
     );
   }
   out.push('');
 
-  for (const f of report.fixtures) {
+  // With repeats, the interesting thing is not which checks failed but which
+  // ones failed *sometimes* — that is where variance lives.
+  if (repeated) {
+    const unstable = report.fixtures.flatMap((runs) =>
+      flaky(runs).map(
+        (check) =>
+          `| ${runs.id} | \`${check.key}\` | ${String(check.pass)} | ${String(check.fail)} | ${String(check.attempts)} |`,
+      ),
+    );
+    out.push('## Unstable checks');
+    out.push('');
+    if (unstable.length === 0) {
+      out.push('None: every check behaved the same way on every attempt.');
+    } else {
+      out.push(
+        'These passed on some attempts and failed on others, so a single run cannot judge them.',
+      );
+      out.push('');
+      out.push('| fixture | check | passed | failed | attempts |');
+      out.push('|---|---|---|---|---|');
+      out.push(...unstable);
+    }
+    out.push('');
+  }
+
+  for (const runs of report.fixtures) {
+    const f = representative(runs);
     out.push('---');
     out.push('');
-    out.push(`## ${f.id}`);
+    out.push(`## ${runs.id}`);
     out.push('');
-    out.push(f.purpose.trim());
+    out.push(runs.purpose.trim());
     out.push('');
     out.push(
-      `**Status** expected \`${f.expectedStatus}\`, got \`${f.actualStatus}\` ${f.statusMatched ? '✓' : '✗'} · ` +
-        `**Retries** ${String(f.retries)} · **Duration** ${seconds(f.durationMs)}`,
+      `**Passed** ${String(runs.passed)} of ${String(runs.attempts.length)} attempt(s) · ` +
+        `**Statuses** ${statusBreakdown(runs)} · **Expected** \`${runs.expectedStatus}\``,
     );
     out.push('');
+    if (repeated) {
+      out.push(
+        `The detail below is from ${runs.passed === runs.attempts.length ? 'the first attempt' : 'the first failing attempt'}.`,
+      );
+      out.push('');
+    }
 
     if (f.error !== null) {
       out.push('### Error');
       out.push('');
       out.push(`\`${f.error.name}\` during \`${f.error.stage ?? 'setup'}\`: ${f.error.message}`);
       out.push('');
+      if (f.validationErrors.length > 0) {
+        out.push('What validation was asking the model to fix:');
+        out.push('');
+        out.push(...f.validationErrors.map((e) => `- ${e}`));
+        out.push('');
+      }
       continue;
     }
 
-    if (f.summary !== null) {
-      out.push(`**Run summary** ${f.summary}`);
+    if (f.validationErrors.length > 0) {
+      out.push('### Outstanding validation errors');
+      out.push('');
+      out.push(...f.validationErrors.map((e) => `- ${e}`));
       out.push('');
     }
 
     out.push('### Hard checks');
     out.push('');
-    out.push('| | key | detail |');
-    out.push('|---|---|---|');
+    out.push(repeated ? '| | key | passed | detail |' : '| | key | detail |');
+    out.push(repeated ? '|---|---|---|---|' : '|---|---|---|');
     for (const row of f.hard) {
+      const stability = runs.checks.find((c) => c.key === row.key);
+      const rate =
+        stability === undefined ? '' : `${String(stability.pass)}/${String(stability.attempts)}`;
+      const detail = 'reason' in row ? row.reason : 'as expected';
       out.push(
-        `| ${MARK[row.status]} | \`${row.key}\` | ${'reason' in row ? row.reason : 'as expected'} |`,
+        repeated
+          ? `| ${MARK[row.status]} | \`${row.key}\` | ${rate} | ${detail} |`
+          : `| ${MARK[row.status]} | \`${row.key}\` | ${detail} |`,
       );
     }
     out.push('');
@@ -213,15 +285,6 @@ export function renderReportMarkdown(report: EvalReport): string {
           `claims ${String(c.claims)} (${String(c.inferredClaims)} inferred, ${String(c.claimsNotAsserted)} hedged) · ` +
           `occurrences ${String(c.occurrences)} · inferences ${String(c.inferences)} · relations ${String(c.relations)}`,
       );
-      out.push('');
-    }
-
-    if (Object.keys(f.findingsByKind).length > 0) {
-      out.push('### Findings by kind');
-      out.push('');
-      for (const [kind, count] of Object.entries(f.findingsByKind)) {
-        out.push(`- ${kind}: ${String(count)}`);
-      }
       out.push('');
     }
 

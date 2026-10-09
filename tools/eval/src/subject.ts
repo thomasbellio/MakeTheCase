@@ -46,6 +46,8 @@ export interface FinalState {
   readonly draft: Parameters<typeof toView>[0] | null;
   readonly findings: readonly AnalysisFinding<LocalId>[];
   readonly attempts: number;
+  /** The errors from the most recent `validate`, empty once it passed. */
+  readonly errors: readonly string[];
 }
 
 export function observeRun(outcome: AnalysisOutcome, state: FinalState): RunObservation {

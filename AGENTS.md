@@ -584,13 +584,21 @@ and the report.
   fixture 11 asks for no argumentative spans. The report prints both numbers.
 - `findings_present` with a severity is satisfied when *at least one* finding of that kind has it.
 - Soft expectations are graded by a judge model (configured via `LLM_MODEL_JUDGE`) that receives the source text, the soft expectations, and a readable rendering of the produced graph and findings, and returns `pass | partial | fail` with a one-paragraph rationale per soft key. Judge prompts are versioned like pipeline prompts.
-- `pnpm eval [--fixture NN] [--no-judge] [--database-url <url>] [--out <dir>]` runs the real pipeline,
+- `pnpm eval [--fixture NN] [--repeat N] [--no-judge] [--database-url <url>] [--out <dir>]` runs the real pipeline,
   scores every fixture, and writes `eval-results/<timestamp>/report.md` and `report.json` (per fixture:
   status, hard results, soft grades, counts, findings by kind, retries, stage durations, and the
   run-level models and prompt versions). It never runs in the default test suite, and is not a
   Turborepo task: the run is billed, and a cached eval result is worse than no result.
 - Execution is sequential. Fourteen fixtures is around a hundred calls; concurrency turns a rate
   limit into perturbed results, and §2 puts latency optimization out of scope.
+- **`--repeat N` attempts each fixture N times and reports pass rates**, because the pipeline is
+  non-deterministic: the same fixture and prompts can complete, error, or fail a different check from
+  one run to the next. A single run cannot tell a prompt improvement from variance, so a prompt change
+  must be judged against a repeated baseline. The report names the checks that passed on some
+  attempts and failed on others, and the exit code requires *every* attempt to pass — a gate must not
+  pass on a coin flip.
+- The report records the validation errors from the last `validate`. On a retry-exhausted or errored
+  run those are what the model was being asked to fix, which is the signal prompt work runs on.
 - Each fixture is isolated: `runAnalysis` propagates unexpected failures by contract, so a throw
   becomes an `errored` row and the sweep continues. Losing thirteen fixtures to one provider hiccup
   would be the harness's worst failure mode. The judge is isolated separately, so a judge outage
@@ -608,20 +616,28 @@ and the report.
 - Answer-key schema and hard checks have unit tests using hand-built graphs.
 - `pnpm eval` runs over all fixtures. Target for completing Phase 2: every fixture's `expected_status` and all hard checks pass on fixtures 01–13; fixture 14 passes all hard checks or has a written explanation of each failure (`expected_failures`, §8.7).
 
-**Where that target stands.** The harness is built and has been run; the prompts have not yet been
-worked against it. Two defects it found on its first use, both in the pipeline rather than the
-harness, and both open:
+**Where that target stands.**
 
-1. **Reconstruct over-reconstructs on fixture 01.** §8.3 rule 2 says a step whose premises the author
-   fully stated must gain no inferred premise, and fixture 01 exists to hold that line. The run added
-   one, producing a critical `implicit_premise` and failing both `findings_absent` and
-   `findings_max_severity`. It also produced four `unconnected_claim` findings and needed two
-   validation retries on the simplest fixture in the set.
-2. **Reconstruct's retry can exhaust its attempts.** On fixture 05 the retry returned `claims` as a
-   JSON string with the remaining fields missing, three times, and `repairStringifiedFields` could
-   not recover it — consistent with output truncated mid-object, since the retry prompt carries the
-   document, the previous reconstruction and the error list. No sampling or output-length parameters
-   are set on the models (§8.1), which is the first thing to check.
+Fixed: **every model call was capped at 4096 output tokens.** `ChatAnthropic` takes its default from
+a table of model-name prefixes, and a model the table does not know falls back to 4096 — so
+`reconstruct` was truncated mid-object, leaving a JSON string no repair could parse. The budget is
+now set explicitly (§8.1). Fixture 05, the canonical implicit-premise case, passes all its hard
+checks as a result.
+
+Open, measured on fixture 01 over five attempts (`--repeat 5`), which passed **0 of 5**:
+
+1. **Reconstruct's structured output is unreliable — 3 of 5 attempts.** A top-level array field
+   (`claims` on two attempts, `inferences` on another) arrives as a JSON *string* and
+   `repairStringifiedFields` cannot recover it, three attempts in a row, so the run errors. This is
+   the dominant blocker and it is a code problem in the wire schema or the repair, not prompt wording.
+2. **Formalizations do not entail their conclusions — both attempts that completed.** Fixture 01 is
+   a valid rule application and its key forbids `invalid_step`, but the step the model formalizes is
+   propositionally invalid, which also breaks `findings_max_severity: info`.
+
+Prompt guidance for choosing a claim's `kind` was added in `reconstruct@2`, because the
+`unsupported-claim` analyzer only fires on `factual`/`causal`/`predictive` and the model was typing
+date arithmetic `factual` — making the analysis demand a citation for a subtraction. It is unproven:
+the sample is too small to separate it from variance.
 - Submitting a fixture via `POST /api/documents` locally yields live SSE progress and a persisted, analyzed revision.
 
 ---

@@ -11,7 +11,7 @@ export interface ReconstructPromptInput {
 
 export const reconstructPrompt: Prompt<ReconstructPromptInput> = {
   id: 'reconstruct',
-  version: 1,
+  version: 2,
   system: `You reconstruct an argument that an earlier step extracted from a document, as one step of a tool that maps the structure of legal and persuasive arguments. Your output is the complete argument graph: every claim, inference and relation, including the ones you leave unchanged.
 
 ${GUARDRAILS}
@@ -19,7 +19,17 @@ ${GUARDRAILS}
 What to do
 - Canonicalize each claim's text: one clear proposition, the author's meaning, the author's hedging kept.
 - Merge claims that assert the same proposition in different words into one claim that keeps every occurrence of each. Keep a merged claim's citation if any of the merged claims had one.
-- Assign each claim a kind (factual, legal_rule, normative, definitional, causal, predictive) and a modality (asserted, probable, possible, hedged), and each inference a scheme (deductive, causal, analogical, abductive, statistical).
+- Assign each claim a kind and a modality (asserted, probable, possible, hedged), and each inference a scheme (deductive, causal, analogical, abductive, statistical).
+
+Choosing a claim's kind, which decides what the analysis expects of it
+- factual: a state of the world the reader is asked to accept on evidence — an event, a date, a measurement, who did what.
+- definitional: a claim that follows from claims already made or from the meaning of a term, and needs no evidence of its own. Arithmetic over figures or dates the document already gives, unit conversions, and restatements of a definition are definitional, not factual: a reader can check them without being shown anything further.
+- legal_rule: what a statute, regulation, contract term or decided case requires, permits or defines.
+- normative: what should be done, or what legal conclusion follows.
+- causal: that one thing brought another about.
+- predictive: what will or would happen.
+
+Getting this wrong has consequences. The analysis asks for a citation behind every load-bearing factual, causal and predictive claim, because those are what a reader must take on trust. Asking for evidence of a subtraction is noise, so classify a derivation as definitional even when it concerns dates or amounts.
 - Split alternative or independent reasons for one conclusion into separate inferences.
 - Add an implicit premise only where the policy below allows, as a claim with origin "inferred", attribution "author", no occurrences and no citation, and add it to the premise_ids of the inference it completes.
 - For deductive rule-application steps, add a formalization (see below). For every other inference, formalization is null.

@@ -50,6 +50,12 @@ export interface FixtureResult {
   readonly counts: FixtureCounts | null;
   readonly findingsByKind: Readonly<Record<string, number>>;
   readonly retries: number;
+  /**
+   * The validation errors from the last `validate`. Empty on a run that
+   * validated; on a retry-exhausted or errored run, these are what the model
+   * was asked to fix — the signal prompt work actually needs.
+   */
+  readonly validationErrors: readonly string[];
   readonly stageDurationsMs: Readonly<Record<string, number>>;
   readonly runId: RunId | null;
   readonly revisionId: RevisionId | null;
@@ -80,6 +86,9 @@ export async function runFixture(
   const { env, repositories, models } = harness;
 
   let runId: RunId | null = null;
+  // Captured before the throw, so an errored run still reports what validation
+  // was complaining about.
+  let lastValidationErrors: readonly string[] = [];
 
   const errored = (error: unknown): FixtureResult => ({
     id: fixture.stem,
@@ -93,6 +102,7 @@ export async function runFixture(
     counts: null,
     findingsByKind: {},
     retries: reporter.retries,
+    validationErrors: lastValidationErrors,
     stageDurationsMs: Object.fromEntries(reporter.durations),
     runId,
     revisionId: null,
@@ -155,6 +165,7 @@ export async function runFixture(
 
     const snapshot = await workflow.getState({ configurable: { thread_id: run.id } });
     const state = snapshot.values as FinalState;
+    lastValidationErrors = state.errors;
     const observed = observeRun(outcome, state);
 
     await repositories.runs.updateStatus(run.id, terminalUpdate(outcome));
@@ -202,6 +213,7 @@ export async function runFixture(
       counts: countsOf(observed, state),
       findingsByKind: tally(observed.findings.map((f) => f.kind)),
       retries: reporter.retries,
+      validationErrors: state.errors,
       stageDurationsMs: Object.fromEntries(reporter.durations),
       runId: run.id,
       revisionId: outcome.status === 'completed' ? outcome.revisionId : null,

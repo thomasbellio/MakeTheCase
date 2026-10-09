@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildReport, renderReportMarkdown } from '../src/report.ts';
+import { aggregate } from '../src/aggregate.ts';
 import type { FixtureResult } from '../src/run-fixture.ts';
 
 function result(over: Partial<FixtureResult> = {}): FixtureResult {
@@ -26,6 +27,7 @@ function result(over: Partial<FixtureResult> = {}): FixtureResult {
     },
     findingsByKind: { load_bearing: 3 },
     retries: 0,
+    validationErrors: [],
     stageDurationsMs: { classify: 9120 },
     runId: null,
     revisionId: null,
@@ -38,15 +40,30 @@ function result(over: Partial<FixtureResult> = {}): FixtureResult {
   };
 }
 
-const report = (results: readonly FixtureResult[]) =>
+/** One attempt per fixture, as a single-run sweep produces. */
+const report = (results: readonly FixtureResult[], repeat = 1) =>
   buildReport({
     startedAt: new Date('2026-10-09T12:04:31.000Z'),
     finishedAt: new Date('2026-10-09T12:11:23.000Z'),
-    results,
+    results: results.map((r) => aggregate([r])),
     judge: true,
     databaseUrlOverridden: false,
+    repeat,
     models: { classify: { provider: 'anthropic', model: 'a-model' } },
     promptVersions: { classify: 'classify@1' },
+  });
+
+/** Repeated attempts at one fixture. */
+const repeatedReport = (attempts: readonly FixtureResult[]) =>
+  buildReport({
+    startedAt: new Date('2026-10-09T12:04:31.000Z'),
+    finishedAt: new Date('2026-10-09T12:11:23.000Z'),
+    results: [aggregate(attempts)],
+    judge: false,
+    databaseUrlOverridden: false,
+    repeat: attempts.length,
+    models: {},
+    promptVersions: {},
   });
 
 describe('buildReport', () => {
@@ -75,7 +92,7 @@ describe('buildReport', () => {
 
     expect(built.totals).toMatchObject({
       fixtures: 3,
-      passed: 2,
+      stable: 2,
       hard: { pass: 2, fail: 1, explained: 1, skipped: 1 },
       soft: { pass: 3 },
     });
@@ -91,7 +108,7 @@ describe('buildReport', () => {
       }),
     ]);
     expect(built.totals.errored).toBe(1);
-    expect(built.totals.statusMismatched).toBe(1);
+    expect(built.totals.attemptsPassed).toBe(0);
   });
 });
 
@@ -123,16 +140,34 @@ describe('renderReportMarkdown', () => {
   });
 
   it('states plainly when the judge did not run', () => {
-    const built = buildReport({
-      startedAt: new Date(),
-      finishedAt: new Date(),
-      results: [result({ soft: [] })],
-      judge: false,
-      databaseUrlOverridden: false,
-      models: {},
-      promptVersions: {},
-    });
-    expect(renderReportMarkdown(built)).toContain('The judge did not run');
+    expect(renderReportMarkdown(repeatedReport([result({ soft: [] })]))).toContain(
+      'The judge did not run',
+    );
+  });
+
+  it('reports a pass rate and names the unstable check when attempts disagree', () => {
+    // The whole reason --repeat exists: one run cannot tell an improvement from
+    // variance, so the report has to show which checks wobble.
+    const built = repeatedReport([
+      result(),
+      result({
+        passed: false,
+        hard: [{ key: 'claim_count', status: 'fail', reason: '3 is below 5' }],
+      }),
+      result(),
+    ]);
+
+    expect(built.totals).toMatchObject({ fixtures: 1, stable: 0, attempts: 3, attemptsPassed: 2 });
+
+    const text = renderReportMarkdown(built);
+    expect(text).toContain('## Unstable checks');
+    expect(text).toContain('`claim_count`');
+    expect(text).toContain('2/3');
+  });
+
+  it('says so when every attempt agreed', () => {
+    const text = renderReportMarkdown(repeatedReport([result(), result()]));
+    expect(text).toContain('every check behaved the same way on every attempt');
   });
 
   it('embeds the rendering the judge saw, so a soft failure is debuggable', () => {

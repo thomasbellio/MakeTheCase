@@ -1,6 +1,6 @@
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { invokeStructured } from '../llm/structured.ts';
-import { reconstructPrompt } from '../prompts/reconstruct.v1.ts';
+import { reconstructPrompt } from '../prompts/reconstruct.v2.ts';
 import {
   reconstructResponseSchema,
   type ExtractResponse,
