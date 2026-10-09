@@ -34,7 +34,11 @@ import {
 } from '../schema/tables.ts';
 
 export class DrizzleRevisionRepository implements RevisionRepository {
-  constructor(private readonly db: Db) {}
+  private readonly db: Db;
+
+  constructor(db: Db) {
+    this.db = db;
+  }
 
   /**
    * Writes a graph's contents in one transaction (AGENTS.md section 5.2), into

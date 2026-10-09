@@ -15,7 +15,11 @@ import { analysisRuns, runEvents } from '../schema/tables.ts';
 import { runEventToDomain, runToDomain } from '../mappers/entities.ts';
 
 export class DrizzleAnalysisRunRepository implements AnalysisRunRepository {
-  constructor(private readonly db: Db) {}
+  private readonly db: Db;
+
+  constructor(db: Db) {
+    this.db = db;
+  }
 
   async create(input: NewAnalysisRun): Promise<AnalysisRun> {
     const [row] = await this.db

@@ -35,6 +35,14 @@ const EXPECTED = [
     fixture: 'packages/persistence/src/__boundaries__/imports-pipeline.boundary-fixture.ts',
     why: 'persistence depends on domain and drizzle only',
   },
+  {
+    fixture: 'packages/answer-keys/src/__boundaries__/imports-persistence.boundary-fixture.ts',
+    why: 'answer-keys is pure: domain, zod and yaml only',
+  },
+  {
+    fixture: 'tools/eval/src/__boundaries__/imports-web.boundary-fixture.ts',
+    why: 'no package may import from an apps/* package',
+  },
 ];
 
 let failures = 0;

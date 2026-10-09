@@ -7,6 +7,9 @@ dist/
 out/
 *.tsbuildinfo
 
+# billed evaluation output (AGENTS.md section 8.7)
+eval-results/
+
 # caches
 .turbo/
 .vitest/

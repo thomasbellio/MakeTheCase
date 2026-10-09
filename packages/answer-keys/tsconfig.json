@@ -1,0 +1,10 @@
+{
+  "extends": "@make-your-case/config/tsconfig/library.json",
+  "compilerOptions": {
+    // No rootDir/outDir: consumed as TypeScript source with no build step
+    // (AGENTS.md section 5.4).
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "exclude": ["src/**/__boundaries__/**"]
+}

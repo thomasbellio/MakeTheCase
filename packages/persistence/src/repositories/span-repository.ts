@@ -5,7 +5,11 @@ import { spans } from '../schema/tables.ts';
 import { spanToDomain, spanToRow } from '../mappers/entities.ts';
 
 export class DrizzleSpanRepository implements SpanRepository {
-  constructor(private readonly db: Db) {}
+  private readonly db: Db;
+
+  constructor(db: Db) {
+    this.db = db;
+  }
 
   async saveAll(documentId: DocumentId, toSave: Span[]): Promise<void> {
     if (toSave.length === 0) return;

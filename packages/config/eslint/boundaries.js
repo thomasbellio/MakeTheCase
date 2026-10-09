@@ -10,6 +10,8 @@ import boundaries from 'eslint-plugin-boundaries';
  *   worker       -> pipeline, persistence, analysis, domain (composition root)
  *   web (server) -> persistence, domain, pg-boss            (composition root)
  *   web (client) -> domain types only, via the API client
+ *   answer-keys  -> domain, zod, yaml
+ *   tools/eval   -> pipeline, analysis, domain, persistence, answer-keys
  *
  * No package may import from an `apps/*` package. The server/client split
  * inside `apps/web` is enforced as a directory boundary, which is why
@@ -41,6 +43,9 @@ const elements = [
   { type: 'persistence', pattern: 'packages/persistence/**/*' },
   { type: 'pipeline', pattern: 'packages/pipeline/**/*' },
   { type: 'config', pattern: 'packages/config/**/*' },
+  { type: 'answer-keys', pattern: 'packages/answer-keys/**/*' },
+
+  { type: 'eval', pattern: 'tools/eval/**/*' },
 ];
 
 /** Allows relative imports within the same package. */
@@ -83,6 +88,7 @@ const WORKSPACE = {
   analysis: '@make-your-case/analysis',
   persistence: '@make-your-case/persistence',
   pipeline: '@make-your-case/pipeline',
+  answerKeys: '@make-your-case/answer-keys',
 };
 
 const policies = [
@@ -93,7 +99,11 @@ const policies = [
   },
   {
     from: { element: { type: 'analysis' } },
-    allow: [self('analysis'), ...TOOLING, ...pkg(WORKSPACE.domain, 'graphology', 'graphology-*')],
+    allow: [
+      self('analysis'),
+      ...TOOLING,
+      ...pkg(WORKSPACE.domain, WORKSPACE.answerKeys, 'graphology', 'graphology-*'),
+    ],
   },
   {
     from: { element: { type: 'persistence' } },
@@ -191,6 +201,33 @@ const policies = [
     // Presentational building blocks: no workspace imports beyond domain types.
     from: { element: { type: ['web-ui', 'web-lib'] } },
     allow: [self('web-ui'), self('web-lib'), ...TOOLING, ...pkg(WORKSPACE.domain, ...UI_PACKAGES)],
+  },
+  {
+    // Reads answer keys and scores them against a graph. Pure: domain types in,
+    // pass/fail out, so it can be shared by `tools/eval` and the analysis tests.
+    from: { element: { type: 'answer-keys' } },
+    allow: [self('answer-keys'), ...TOOLING, ...pkg(WORKSPACE.domain, 'zod', 'zod/*', 'yaml')],
+  },
+  {
+    // The evaluation harness: a composition root, so it reaches everything
+    // section 4 grants it, including persistence.
+    from: { element: { type: 'eval' } },
+    allow: [
+      self('eval'),
+      ...TOOLING,
+      ...pkg(
+        WORKSPACE.domain,
+        '@make-your-case/domain/testing',
+        WORKSPACE.analysis,
+        WORKSPACE.persistence,
+        WORKSPACE.pipeline,
+        '@make-your-case/pipeline/testing',
+        WORKSPACE.answerKeys,
+        'zod',
+        'zod/*',
+        '@langchain/*',
+      ),
+    ],
   },
   {
     // Shared tooling presets; they legitimately import lint and test plugins.

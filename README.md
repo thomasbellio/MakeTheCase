@@ -81,6 +81,7 @@ Docker for the local Postgres.
 pnpm install
 cp .env.example .env     # defaults match the Postgres in docker-compose.yml
 pnpm db:up               # start Postgres
+pnpm db:migrate          # create the schema (once, and after any schema change)
 pnpm dev                 # http://localhost:3000
 ```
 
@@ -95,5 +96,12 @@ pnpm lint:boundaries     # asserts the architecture rules reject illegal imports
 pnpm format:check
 ```
 
-`pnpm db:down` stops Postgres. See `AGENTS.md` for the architecture, the
-dependency rules between packages, and the phased implementation plan.
+`pnpm db:down` stops Postgres.
+
+`pnpm eval` measures the analysis pipeline against the answer keys in
+`fixtures/arguments/` and writes a report to `eval-results/`. It calls real
+language models, so it costs money and is never part of `pnpm test`; add
+`--no-judge` to skip the grading model, or `--fixture 05` to run just one.
+
+See `AGENTS.md` for the architecture, the dependency rules between packages, and
+the phased implementation plan.

@@ -9,7 +9,7 @@
   },
   "types": "./src/index.ts",
   "scripts": {
-    "lint": "eslint src",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "smoke:structured": "node --env-file-if-exists=../../.env scripts/smoke-structured.ts",

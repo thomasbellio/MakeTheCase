@@ -1,6 +1,7 @@
 packages:
   - apps/*
   - packages/*
+  - tools/*
 
 # Shared versions live here so they cannot drift between workspaces.
 # Reference with "catalog:" in a package.json dependency range.
@@ -10,6 +11,7 @@ catalog:
   vitest: ^5.0.3
   '@vitest/coverage-v8': ^5.0.3
   '@types/node': ^26.6.4
+  yaml: ^2.9.1
 
 # Explicit decisions on dependency build scripts. esbuild backs Vite/Vitest and
 # drizzle-kit, so it needs its install script. The rest are optional native

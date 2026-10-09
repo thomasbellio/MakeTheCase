@@ -88,10 +88,16 @@ export class InMemoryRevisionRepository implements RevisionRepository {
    * Drizzle implementation does in one transaction. Pass the fakes it should
    * write to; `createInMemoryRepositories` wires this up.
    */
+  private readonly spans: InMemorySpanRepository;
+  private readonly runs: InMemoryAnalysisRunRepository;
+
   constructor(
-    private readonly spans: InMemorySpanRepository = new InMemorySpanRepository(),
-    private readonly runs: InMemoryAnalysisRunRepository = new InMemoryAnalysisRunRepository(),
-  ) {}
+    spans: InMemorySpanRepository = new InMemorySpanRepository(),
+    runs: InMemoryAnalysisRunRepository = new InMemoryAnalysisRunRepository(),
+  ) {
+    this.spans = spans;
+    this.runs = runs;
+  }
 
   saveArgumentGraph(graph: ArgumentGraph): Promise<RevisionId> {
     this.graphs.set(graph.revision_id, graph);

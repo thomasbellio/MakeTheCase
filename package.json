@@ -18,7 +18,9 @@
     "db:up": "docker compose up -d --wait",
     "db:down": "docker compose down",
     "db:logs": "docker compose logs -f postgres",
-    "test:db": "turbo run test:db"
+    "test:db": "turbo run test:db",
+    "eval": "pnpm --filter @make-your-case/eval eval",
+    "db:migrate": "pnpm --filter @make-your-case/persistence db:migrate"
   },
   "devDependencies": {
     "@make-your-case/config": "workspace:*",

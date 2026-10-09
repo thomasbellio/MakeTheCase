@@ -1,5 +1,5 @@
 {
-  "name": "@make-your-case/analysis",
+  "name": "@make-your-case/eval",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -8,17 +8,22 @@
   },
   "types": "./src/index.ts",
   "scripts": {
+    "eval": "node --env-file-if-exists=../../.env src/cli.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@langchain/core": "^1.2.16",
+    "@langchain/langgraph": "^1.4.19",
+    "@make-your-case/analysis": "workspace:*",
+    "@make-your-case/answer-keys": "workspace:*",
     "@make-your-case/domain": "workspace:*",
-    "graphology": "^0.26.0",
-    "graphology-components": "^1.5.4"
+    "@make-your-case/persistence": "workspace:*",
+    "@make-your-case/pipeline": "workspace:*",
+    "zod": "catalog:"
   },
   "devDependencies": {
-    "@make-your-case/answer-keys": "workspace:*",
     "@make-your-case/config": "workspace:*",
     "@types/node": "catalog:",
     "typescript": "catalog:",

@@ -51,7 +51,7 @@ describe('domain enums and Postgres enums agree', () => {
   it('covers every Postgres enum defined in the schema', () => {
     // `pgEnum` returns a callable, so this cannot filter on `typeof object`.
     const declared = Object.entries(pg)
-      .filter(([, value]) => value !== null && typeof value === 'function' && 'enumValues' in value)
+      .filter(([, value]) => typeof value === 'function' && 'enumValues' in value)
       .map(([key]) => key);
     expect(declared).toHaveLength(PAIRS.length);
   });

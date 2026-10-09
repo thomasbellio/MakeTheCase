@@ -114,9 +114,10 @@ make-your-case/
 │   ├── analysis/            # Structural validation + deterministic logical analysis. Pure functions.
 │   ├── persistence/         # Drizzle schema, migrations, data mappers, repository implementations
 │   ├── pipeline/            # LangGraph workflow, LLM provider factory, prompts, stage logic
+│   ├── answer-keys/         # Answer-key schema, loader and the deterministic hard-check scorer. Pure.
 │   └── config/              # Shared tsconfig, eslint, vitest presets
 ├── tools/
-│   └── eval/                # Answer-key schema, scorer, judge, and the `pnpm eval` CLI
+│   └── eval/                # The judge, the `pnpm eval` CLI and the report
 ├── fixtures/
 │   └── arguments/           # NN-name.md (input) + NN-name.expected.yaml (answer key)
 ├── docs/
@@ -134,7 +135,10 @@ make-your-case/
 
 Fixture pairs are `fixtures/arguments/NN-name.md` (exactly what a user would paste) and
 `NN-name.expected.yaml` (the answer key, §8.7). Nothing else belongs in that directory — the eval
-harness globs it.
+harness globs it, and an unpaired file is an error rather than a silent skip.
+
+`pnpm-workspace.yaml` globs `tools/*` as well as `apps/*` and `packages/*`. A new workspace must also
+be added to the root `tsconfig.json` references and the root `vitest.config.ts` projects.
 
 ### Dependency rules (enforce with ESLint import boundaries)
 
@@ -142,11 +146,12 @@ harness globs it.
 domain       → (zod only)
 analysis     → domain, graphology                      (no SAT dependency; see §3)
 persistence  → domain, drizzle
+answer-keys  → domain, zod, yaml                       (pure; shared by tools/eval and analysis's tests)
 pipeline     → domain, analysis, langgraph/langchain   (NOT persistence; repositories are injected)
 worker       → pipeline, persistence, analysis, domain (composition root)
 web (server) → persistence, domain, pg-boss            (composition root for API)
 web (client) → domain types only, via the API client
-tools/eval   → pipeline, analysis, domain, persistence  (composition root for evaluation)
+tools/eval   → pipeline, analysis, domain, persistence, answer-keys  (composition root for evaluation)
 ```
 
 No package may import from an `apps/*` package. Client-side code in `apps/web` must never import `persistence`, `pipeline`, or server-only modules.
@@ -227,7 +232,12 @@ cross-package HMR. The consequences bind every phase:
   `rewriteRelativeImportExtensions` in the shared library tsconfig let `tsc` rewrite them to `.js`
   on emit.
 - `apps/worker` is the only package with a real `build`; in development it runs its TypeScript
-  entrypoint directly under Node.
+  entrypoint directly under Node. `pnpm eval` does too.
+- **Node's type-stripping mode rejects TypeScript parameter properties** (`constructor(private readonly x: T)`),
+  so nothing reachable from a bare-Node entrypoint may use them — including the repositories in
+  `persistence`, which both the worker and the eval harness import. Declare the field and assign it
+  in the constructor body instead. Code that only ever runs under Vitest or Next is unaffected, which
+  is why this surfaces late and all at once.
 - If some tool cannot resolve source, add a build for that one package rather than converting the
   repository.
 
@@ -380,8 +390,10 @@ Severity summary: `critical` — circularity, invalid_step, load-bearing implici
   they belong to `pnpm eval` (§8.7). Algorithm behaviour at scale is covered by **generated** graphs
   (a long support chain, a wide alternative-route fan-in, a large cycle) asserting termination,
   correct load-bearing and a runtime bound.
-- A test reads each real `NN-name.expected.yaml` and asserts the finding-shaped hard keys against
-  the computed findings, so fixtures and answer keys cannot drift apart silently.
+- A test reads each real `NN-name.expected.yaml` and scores it with the **same** scorer `pnpm eval`
+  uses (`packages/answer-keys`), so fixtures and answer keys cannot drift apart and the hard keys
+  have exactly one implementation. A hand-built graph has no spans, so it passes `spans: null` and
+  the discourse-function keys come back `skipped`.
 - `pnpm test` passes; analysis coverage ≥ 90%.
 - `pnpm test:db` round-trips a full `ArgumentGraph` — inferred claims, multi-occurrence claims,
   opposing claims, all four relation types, a formalization, findings with multiple ordered targets —
@@ -398,6 +410,8 @@ Severity summary: `critical` — circularity, invalid_step, load-bearing implici
 - Isolation is `TRUNCATE ... RESTART IDENTITY CASCADE` between tests, deliberately **not** an outer
   transaction with savepoints — `saveArgumentGraph`'s own transaction is a thing §5.2 requires us to
   test, and wrapping it would mask commit and rollback bugs in exactly that code.
+- Each package's `lint` script is `eslint .`, not `eslint src`: a lint gate that skips `test/` is not
+  a gate, and the test files had accumulated errors nobody saw.
 - Unit tests that depend on a repository use the in-memory fakes exported from
   `@make-your-case/domain/testing`, not ad-hoc mocks. They live in `domain` because `pipeline` may
   never import `persistence` (§4), so that is the only package every consumer can reach.
@@ -501,7 +515,7 @@ Route handlers are thin; logic lives in server-side services that depend on repo
 
 All request and response bodies are validated with Zod schemas shared from `packages/domain` (or a `contracts` module within it).
 
-### 8.7 Evaluation harness (`tools/eval`)
+### 8.7 Evaluation harness — **complete**
 
 Fixtures live in `fixtures/arguments/` as pairs: `NN-name.md` (exactly what a user would paste; never sent with its answer key) and `NN-name.expected.yaml` (the answer key). The harness must not hard-code fixture content; everything it checks comes from the answer keys.
 
@@ -527,23 +541,87 @@ hard:                            # every key optional; all present keys must pas
   claims_with_modality_not_asserted: { min?, max? }
   spans_with_function: { <function>: { min?, max? } }
   claim_occurrences_in_function: { <function>: { min?, max? } }  # occurrences anchored in spans of that function
-soft:                            # free-form map of string or string[]; graded by the judge
-  <any key>: string | string[]
+soft:                            # graded by the judge; a value may nest one or more levels
+  <any key>: string | string[] | { <any key>: ... }
+expected_failures:               # optional: a written explanation per hard-check row
+  <row key>: string              #   e.g. relations_present[undercut]
 notes: string
 ```
 
+`soft` nests because fixture 14 groups six behaviours under `embedded_behaviors`, which reads better
+than six top-level keys. The judge grades the **leaves**, each identified by its dotted path
+(`embedded_behaviors.alternative_routes`), so grouping costs nothing in precision. A `string[]` is
+one leaf, not many: the items describe a single expectation together.
+
+`thesis` sits outside `soft` but is documented as graded softly, so the harness synthesizes a
+`thesis` leaf for it; otherwise nothing would grade it.
+
+`expected_failures` is how §8.8's "written explanation of each failure" is satisfied durably. A row
+named there is reported as **explained** rather than failed and does not gate the exit code. The
+explanation lives beside the expectation it excuses, so the two are reviewed together — a generated
+report is ephemeral and a separate document drifts.
+
+**Where the pieces live.** `packages/answer-keys` holds the schema, the loader and the deterministic
+scorer, and is pure (domain types in, pass/fail out). It is a package rather than part of `tools/eval`
+because `packages/analysis`'s acceptance test scores hand-built graphs with the same scorer, and
+`analysis` cannot depend on a tool without a workspace cycle. `tools/eval` holds the judge, the CLI
+and the report.
+
 **Scoring**
 
-- Hard checks are deterministic and produce pass/fail per key.
+- Hard checks are deterministic and produce pass, fail, **explained** (named in `expected_failures`)
+  or **skipped** (the caller cannot answer the key) per row. A key absent from the answer key produces
+  no row at all, so a report never takes credit for a property it did not check.
+- **The subject is the final workflow state, not the saved revision.** `getArgumentGraph` orders rows
+  by UUID, so a saved graph comes back differently every run, which would make a report and a judge
+  prompt that are meant to be compared across runs change shape for no reason. The state also keeps
+  spans and the graph in one ID space, and is the only source that exists on both outcome paths — a
+  `not_an_argument` run persists nothing, yet fixtures 11 and 12 still constrain how its spans were
+  classified. That `persist` worked is checked separately, as a `persistence_roundtrip` row comparing
+  the saved revision's cardinalities against the draft.
+- **`spans_with_function` counts only spans the classifier was confident about**, using the same
+  threshold the gate uses. A hedged stray label is not the system claiming the text argues, and
+  fixture 11 asks for no argumentative spans. The report prints both numbers.
+- `findings_present` with a severity is satisfied when *at least one* finding of that kind has it.
 - Soft expectations are graded by a judge model (configured via `LLM_MODEL_JUDGE`) that receives the source text, the soft expectations, and a readable rendering of the produced graph and findings, and returns `pass | partial | fail` with a one-paragraph rationale per soft key. Judge prompts are versioned like pipeline prompts.
-- `pnpm eval [--fixture NN] [--no-judge]` runs the real pipeline, scores every fixture, and writes `eval-results/<timestamp>/report.md` and `report.json` (per fixture: status, hard results, soft grades, counts, findings by kind, retries, duration, models and prompt versions). It never runs in the default test suite.
+- `pnpm eval [--fixture NN] [--no-judge] [--database-url <url>] [--out <dir>]` runs the real pipeline,
+  scores every fixture, and writes `eval-results/<timestamp>/report.md` and `report.json` (per fixture:
+  status, hard results, soft grades, counts, findings by kind, retries, stage durations, and the
+  run-level models and prompt versions). It never runs in the default test suite, and is not a
+  Turborepo task: the run is billed, and a cached eval result is worse than no result.
+- Execution is sequential. Fourteen fixtures is around a hundred calls; concurrency turns a rate
+  limit into perturbed results, and §2 puts latency optimization out of scope.
+- Each fixture is isolated: `runAnalysis` propagates unexpected failures by contract, so a throw
+  becomes an `errored` row and the sweep continues. Losing thirteen fixtures to one provider hiccup
+  would be the harness's worst failure mode. The judge is isolated separately, so a judge outage
+  cannot cost the deterministic results already paid for.
+- It writes into `DATABASE_URL` by default, so each run leaves inspectable documents and revisions
+  behind for Phase 3 to explore. **The dev database must be migrated first** (`pnpm db:up` then
+  `pnpm db:migrate`); the harness checks and says so rather than failing inside the driver.
+- Exit codes: 0 every selected fixture passed, 1 a fixture failed or errored, 2 a usage or
+  configuration problem — so "the eval is broken" is distinguishable from "the pipeline got worse".
 - Some answer keys reference behavior that depends on schema changes (attribution, citations). Those are in v1 scope; a failing expectation is a bug, not a fixture to skip.
 
 ### 8.8 Phase 2 acceptance criteria
 
 - Unit tests for every deterministic node; pipeline tests run end-to-end with `FakeModelProvider`, including: non-argument exit, validation retry that recovers, validation retry that fails, and unconnected claims that warn without retrying.
 - Answer-key schema and hard checks have unit tests using hand-built graphs.
-- `pnpm eval` runs over all fixtures. Target for completing Phase 2: every fixture's `expected_status` and all hard checks pass on fixtures 01–13; fixture 14 passes all hard checks or has a written explanation of each failure in the report.
+- `pnpm eval` runs over all fixtures. Target for completing Phase 2: every fixture's `expected_status` and all hard checks pass on fixtures 01–13; fixture 14 passes all hard checks or has a written explanation of each failure (`expected_failures`, §8.7).
+
+**Where that target stands.** The harness is built and has been run; the prompts have not yet been
+worked against it. Two defects it found on its first use, both in the pipeline rather than the
+harness, and both open:
+
+1. **Reconstruct over-reconstructs on fixture 01.** §8.3 rule 2 says a step whose premises the author
+   fully stated must gain no inferred premise, and fixture 01 exists to hold that line. The run added
+   one, producing a critical `implicit_premise` and failing both `findings_absent` and
+   `findings_max_severity`. It also produced four `unconnected_claim` findings and needed two
+   validation retries on the simplest fixture in the set.
+2. **Reconstruct's retry can exhaust its attempts.** On fixture 05 the retry returned `claims` as a
+   JSON string with the remaining fields missing, three times, and `repairStringifiedFields` could
+   not recover it — consistent with output truncated mid-object, since the retry prompt carries the
+   document, the previous reconstruction and the error list. No sampling or output-length parameters
+   are set on the models (§8.1), which is the first thing to check.
 - Submitting a fixture via `POST /api/documents` locally yields live SSE progress and a persisted, analyzed revision.
 
 ---
@@ -624,6 +702,10 @@ strips it from tasks (§3).
 Each stage's provider is `LLM_PROVIDER_<STAGE>` or else `LLM_PROVIDER`, and its model is `LLM_MODEL_<STAGE>` or else `LLM_MODEL_DEFAULT`; the API key is the one for the resolved provider. Blank values count as unset.
 
 Configuration is parsed and validated with Zod at startup in each app; fail fast on invalid config. Secrets are never logged.
+
+Migrations are applied explicitly, never implicitly by a tool: `pnpm db:up` then `pnpm db:migrate`.
+Only the integration-test helper creates and migrates its own database (`TEST_DATABASE_URL`), so a
+fresh clone has an empty `DATABASE_URL` database until `db:migrate` is run.
 
 ---
 

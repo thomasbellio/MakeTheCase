@@ -1,5 +1,5 @@
 {
-  "name": "@make-your-case/analysis",
+  "name": "@make-your-case/answer-keys",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -14,11 +14,10 @@
   },
   "dependencies": {
     "@make-your-case/domain": "workspace:*",
-    "graphology": "^0.26.0",
-    "graphology-components": "^1.5.4"
+    "yaml": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
-    "@make-your-case/answer-keys": "workspace:*",
     "@make-your-case/config": "workspace:*",
     "@types/node": "catalog:",
     "typescript": "catalog:",

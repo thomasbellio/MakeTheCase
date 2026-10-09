@@ -1,11 +1,29 @@
 {
   "files": [],
   "references": [
-    { "path": "./packages/domain" },
-    { "path": "./packages/analysis" },
-    { "path": "./packages/persistence" },
-    { "path": "./packages/pipeline" },
-    { "path": "./apps/worker" },
-    { "path": "./apps/web" }
+    {
+      "path": "./packages/domain"
+    },
+    {
+      "path": "./packages/analysis"
+    },
+    {
+      "path": "./packages/persistence"
+    },
+    {
+      "path": "./packages/pipeline"
+    },
+    {
+      "path": "./packages/answer-keys"
+    },
+    {
+      "path": "./tools/eval"
+    },
+    {
+      "path": "./apps/worker"
+    },
+    {
+      "path": "./apps/web"
+    }
   ]
 }

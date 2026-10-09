@@ -12,7 +12,11 @@ import { analysisRuns, documents } from '../schema/tables.ts';
 import { documentToDomain } from '../mappers/entities.ts';
 
 export class DrizzleDocumentRepository implements DocumentRepository {
-  constructor(private readonly db: Db) {}
+  private readonly db: Db;
+
+  constructor(db: Db) {
+    this.db = db;
+  }
 
   async create(input: NewDocument): Promise<Document> {
     const [row] = await this.db

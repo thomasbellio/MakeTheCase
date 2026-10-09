@@ -1,5 +1,13 @@
 import { defineConfig } from 'drizzle-kit';
 
+// drizzle-kit does not read .env, and `migrate` needs a live connection.
+try {
+  process.loadEnvFile(new URL('../../.env', import.meta.url));
+} catch {
+  // No .env: `generate` works from the schema alone, and `migrate` reports the
+  // missing URL itself.
+}
+
 /**
  * drizzle-kit configuration. Migrations are generated from the schema and
  * committed to the repository (AGENTS.md section 7.4).

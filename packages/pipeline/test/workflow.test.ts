@@ -65,11 +65,18 @@ const reconstructClaim = (
   confidence: 0.9,
 });
 
+/** The extracted claim at `index`, or a loud failure if the fixture changed. */
+function extractedClaim(index: number): ExtractResponse['claims'][number] {
+  const claim = extracted.claims[index];
+  if (claim === undefined) throw new Error(`the extract fixture has no claim ${String(index)}`);
+  return claim;
+}
+
 const valid: ReconstructResponse = {
   claims: [
-    reconstructClaim(extracted.claims[0] as ExtractResponse['claims'][number], 'legal_rule'),
-    reconstructClaim(extracted.claims[1] as ExtractResponse['claims'][number], 'factual'),
-    reconstructClaim(extracted.claims[2] as ExtractResponse['claims'][number], 'normative'),
+    reconstructClaim(extractedClaim(0), 'legal_rule'),
+    reconstructClaim(extractedClaim(1), 'factual'),
+    reconstructClaim(extractedClaim(2), 'normative'),
   ],
   inferences: [
     {
