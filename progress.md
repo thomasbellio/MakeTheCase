@@ -75,6 +75,11 @@ Bugs found and fixed on the way: `DocumentRepository.list` never reported a run 
 correlated subquery compared `r.document_id` with `r.id`); and two boundaries misconfigurations had
 silently exempted most `apps/web` imports from the import rules (AGENTS.md §3).
 
+Found afterwards, under `pnpm dev`: the document page stayed on its loading skeleton. Strict Mode
+mounts, cleans up and mounts again with the same ViewModel, and its one-shot `dispose` flag made the
+second load discard its response. The headless check had run against `next start`, where effects run
+once. Lifecycle is now per activation (AGENTS.md §9.1), with a `<StrictMode>` screen test.
+
 ## What is left
 
 ### 1. ~~The API (§8.6)~~ — done; notes kept for history

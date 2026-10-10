@@ -167,15 +167,73 @@ describe('following a run in progress', () => {
     expect(vm.progress?.connection).toBe('open');
   });
 
-  it('closes the stream when the screen is disposed', async () => {
+  it('closes the stream when its session ends', async () => {
     const { api, vm, run } = runWith('running');
-    await vm.load();
+    const deactivate = vm.activate();
+    await settle();
 
-    vm.dispose();
+    deactivate();
 
     expect(api.streamFor(run.id).closed).toBe(true);
   });
 });
+
+describe('sessions', () => {
+  // React Strict Mode mounts, cleans up and mounts again in development, with
+  // the same ViewModel each time. A one-shot dispose flag left the page loading.
+  it('shows the analysis when activated again after a cleanup', async () => {
+    const { vm } = completedSetup();
+
+    vm.activate()();
+    vm.activate();
+    await settle();
+
+    expect(vm.phase.kind).toBe('complete');
+    expect(vm.map?.layoutState).toBe('ready');
+  });
+
+  it('keeps exactly one stream open across a cleanup and a fresh activation', async () => {
+    const { api, vm } = runWith('running');
+
+    vm.activate()();
+    vm.activate();
+    await settle();
+
+    expect(vm.phase.kind).toBe('in_progress');
+    expect(api.streams.filter((stream) => !stream.closed)).toHaveLength(1);
+  });
+
+  it('ignores a response that arrives after its session ended', async () => {
+    const { api, vm, document } = completedSetup();
+    const late = deferred<Awaited<ReturnType<FakeApiClient['getDocument']>>>();
+    const getDocument = api.getDocument.bind(api);
+    let calls = 0;
+    api.getDocument = (id) => {
+      calls += 1;
+      return calls === 1 ? late.promise : getDocument(id);
+    };
+
+    vm.activate()();
+    vm.activate();
+    await settle();
+    expect(vm.phase.kind).toBe('complete');
+
+    // The first session's response turns up last, describing a failed run.
+    late.resolve({ ok: false, error: { code: 'internal', message: 'stale' } });
+    await settle();
+
+    expect(vm.phase.kind).toBe('complete');
+    expect(vm.detail?.document.id).toBe(document.id);
+  });
+});
+
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
 
 describe('selection syncing', () => {
   it('selecting a span highlights its claims and refits the map, without scrolling the text', async () => {

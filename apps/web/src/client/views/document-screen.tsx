@@ -7,7 +7,7 @@ import ELK from 'elkjs/lib/elk.bundled.js';
 import type { DocumentId } from '@make-your-case/domain';
 import { Alert, AlertDescription, AlertTitle } from '../../components/ui/alert';
 import { Skeleton } from '../../components/ui/skeleton';
-import { HttpApiClient } from '../api/api-client';
+import { HttpApiClient, type ApiClient } from '../api/api-client';
 import type { LayoutFn } from '../viewmodels/argument-map-view-model';
 import { DocumentAnalysisViewModel } from '../viewmodels/document-analysis-view-model';
 import { ArgumentMapView } from './argument-map-view';
@@ -29,18 +29,21 @@ function createLayout(): LayoutFn {
 }
 
 /** The document screen (`/documents/[id]`): owns its ViewModel and disposes it on unmount. */
-export function DocumentScreen({ documentId }: { documentId: DocumentId }) {
+export function DocumentScreen({
+  documentId,
+  api,
+}: {
+  documentId: DocumentId;
+  /** Injected by tests; the page uses the real client. */
+  api?: ApiClient;
+}) {
   const [vm] = useState(
-    () => new DocumentAnalysisViewModel(new HttpApiClient(), documentId, createLayout()),
+    () => new DocumentAnalysisViewModel(api ?? new HttpApiClient(), documentId, createLayout()),
   );
 
-  useEffect(() => {
-    void vm.load();
-    // Closes the event stream when the user leaves the page.
-    return () => {
-      vm.dispose();
-    };
-  }, [vm]);
+  // One session per mount; its cleanup closes the event stream. Strict Mode
+  // mounts twice in development, and the second session is the one that shows.
+  useEffect(() => vm.activate(), [vm]);
 
   return (
     <Provider value={vm}>

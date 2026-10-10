@@ -682,6 +682,7 @@ the sample is too small to separate it from variance.
 - **ViewModel**: MobX classes in `apps/web/src/client/viewmodels/` (under `client/`, which is the directory the import boundary protects), one per screen or major panel. They hold observable state, expose `computed` derivations and action methods (commands), and depend on the API client via constructor injection. ViewModels contain no JSX and no DOM access.
 - **View**: React components wrapped in `observer`. Views render ViewModel state and invoke ViewModel commands. No data fetching, no business logic, no derivations beyond trivial formatting.
 - ViewModels are provided through React context at the screen level and disposed on unmount (close SSE connections, dispose reactions).
+- **A ViewModel must survive a cleanup followed by a fresh mount.** `useState` keeps the same instance, and React Strict Mode (on by default in Next dev) mounts, cleans up and mounts again; a one-shot `dispose` flag therefore left the document page loading for ever. Lifecycle is per activation: the effect calls `vm.activate()`, which returns that session's cleanup, and work started under an ended session is discarded. Production builds run effects once, so check a new screen under `pnpm dev` or a `<StrictMode>` test, not only `next start`.
 - ViewModels are unit-tested with a fake API client, without rendering.
 - Do not introduce TanStack Query, Redux, Zustand, or other state libraries.
 

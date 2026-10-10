@@ -53,19 +53,16 @@ export class DocumentAnalysisViewModel {
   readonly documentId: DocumentId;
   private readonly api: ApiClient;
   private readonly runLayout: LayoutFn;
-  private disposed = false;
 
   constructor(api: ApiClient, documentId: DocumentId, runLayout: LayoutFn) {
     this.api = api;
     this.documentId = documentId;
     this.runLayout = runLayout;
-    makeAutoObservable<this, 'api' | 'runLayout' | 'disposed' | 'isDisposed'>(
+    makeAutoObservable<this, 'api' | 'runLayout'>(
       this,
       {
         api: false,
         runLayout: false,
-        disposed: false,
-        isDisposed: false,
         documentId: false,
         phase: observableRef,
         detail: observableRef,
@@ -97,9 +94,27 @@ export class DocumentAnalysisViewModel {
       : highlightFor(this.index, this.hovered ?? this.selection);
   }
 
-  async load(): Promise<void> {
+  /**
+   * Starts a session for one mount of the screen: loads the document and
+   * follows its run. The returned function ends the session, closing its
+   * event stream and discarding any response still in flight.
+   *
+   * A session, not a one-shot `dispose`, because the same ViewModel can be
+   * mounted again after its cleanup ran: React Strict Mode does exactly that
+   * in development, and a one-shot flag left the page loading for ever.
+   */
+  activate(): () => void {
+    const session = new AbortController();
+    void this.load(session.signal);
+    return () => {
+      session.abort();
+    };
+  }
+
+  /** Loads the document; everything it starts stops when `signal` aborts. */
+  async load(signal: AbortSignal = new AbortController().signal): Promise<void> {
     const result = await this.api.getDocument(this.documentId);
-    if (this.isDisposed()) return;
+    if (signal.aborted) return;
     if (!result.ok) {
       runInAction(() => {
         this.phase = { kind: 'error', message: result.error.message };
@@ -117,7 +132,7 @@ export class DocumentAnalysisViewModel {
       });
       return;
     }
-    await this.follow(run);
+    await this.follow(run, signal);
   }
 
   select(selection: Selection | null, source: SelectionSource): void {
@@ -148,36 +163,33 @@ export class DocumentAnalysisViewModel {
     if (!sameSelection(selection, this.hovered)) this.hovered = selection;
   }
 
-  dispose(): void {
-    this.disposed = true;
-    this.progress?.dispose();
-  }
-
-  /**
-   * Checked after every await: a response arriving after the user left the
-   * page must not start a layout or reopen a stream. A method rather than the
-   * field, because the field reads as narrowed across an `await`.
+  /*
+   * Every await below is followed by a `signal.aborted` check: a response
+   * arriving after its session ended must not start a layout or open a stream.
    */
-  private isDisposed(): boolean {
-    return this.disposed;
-  }
-
-  private async follow(run: AnalysisRun): Promise<void> {
+  private async follow(run: AnalysisRun, signal: AbortSignal): Promise<void> {
     switch (run.status) {
       case 'queued':
       case 'running': {
         const progress = new RunProgressViewModel(this.api, run, (outcome) => {
-          void this.finished(outcome);
+          void this.finished(outcome, signal);
         });
         runInAction(() => {
           this.progress = progress;
           this.phase = { kind: 'in_progress' };
         });
+        signal.addEventListener(
+          'abort',
+          () => {
+            progress.dispose();
+          },
+          { once: true },
+        );
         progress.start();
         return;
       }
       case 'completed':
-        await this.loadArgument();
+        await this.loadArgument(signal);
         return;
       case 'not_an_argument':
         runInAction(() => {
@@ -195,8 +207,8 @@ export class DocumentAnalysisViewModel {
     }
   }
 
-  private async finished(outcome: RunOutcome): Promise<void> {
-    if (this.isDisposed()) return;
+  private async finished(outcome: RunOutcome, signal: AbortSignal): Promise<void> {
+    if (signal.aborted) return;
     if (outcome.status === 'not_an_argument') {
       this.phase = { kind: 'not_an_argument', summary: outcome.summary };
       return;
@@ -209,7 +221,7 @@ export class DocumentAnalysisViewModel {
     // Spans are written when the analysis is saved, so the detail fetched
     // while the run was in progress has none; fetch it again.
     const detail = await this.api.getDocument(this.documentId);
-    if (this.isDisposed()) return;
+    if (isAborted(signal)) return;
     if (!detail.ok) {
       runInAction(() => {
         this.phase = { kind: 'error', message: detail.error.message };
@@ -219,12 +231,12 @@ export class DocumentAnalysisViewModel {
     runInAction(() => {
       this.detail = detail.value;
     });
-    await this.loadArgument();
+    await this.loadArgument(signal);
   }
 
-  private async loadArgument(): Promise<void> {
+  private async loadArgument(signal: AbortSignal): Promise<void> {
     const result = await this.api.getArgument(this.documentId);
-    if (this.isDisposed()) return;
+    if (signal.aborted) return;
     const detail = this.detail;
     if (!result.ok || detail === null) {
       runInAction(() => {
@@ -247,4 +259,9 @@ export class DocumentAnalysisViewModel {
     });
     await map.layout();
   }
+}
+
+/** Read through a call: a second check of `signal.aborted` reads as narrowed across an `await`. */
+function isAborted(signal: AbortSignal): boolean {
+  return signal.aborted;
 }
