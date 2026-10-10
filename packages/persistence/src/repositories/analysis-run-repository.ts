@@ -1,8 +1,9 @@
-import { and, asc, eq, gt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, sql } from 'drizzle-orm';
 import {
   newId,
   type AnalysisRun,
   type AnalysisRunRepository,
+  type DocumentId,
   type NewAnalysisRun,
   type NewRunEvent,
   type RunEvent,
@@ -50,6 +51,17 @@ export class DrizzleAnalysisRunRepository implements AnalysisRunRepository {
 
   async getById(id: RunId): Promise<AnalysisRun | null> {
     const [row] = await this.db.select().from(analysisRuns).where(eq(analysisRuns.id, id)).limit(1);
+    return row === undefined ? null : runToDomain(row);
+  }
+
+  async getLatestForDocument(documentId: DocumentId): Promise<AnalysisRun | null> {
+    // By request time, not `started_at`: a rerun still queued is the latest.
+    const [row] = await this.db
+      .select()
+      .from(analysisRuns)
+      .where(eq(analysisRuns.documentId, documentId))
+      .orderBy(desc(analysisRuns.createdAt), desc(analysisRuns.id))
+      .limit(1);
     return row === undefined ? null : runToDomain(row);
   }
 

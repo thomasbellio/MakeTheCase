@@ -28,13 +28,19 @@ import boundaries from 'eslint-plugin-boundaries';
 /** Element types, most specific pattern first. */
 const elements = [
   // apps/web is split so the server/client rule is a directory boundary.
-  { type: 'web-server', pattern: 'apps/web/src/server/**/*' },
-  { type: 'web-client', pattern: 'apps/web/src/client/**/*' },
-  { type: 'web-app', pattern: 'apps/web/src/app/**/*' },
+  //
+  // `partialMatch: false` matches the whole file path. The default matches
+  // parent folders, so `src/server/**/*` missed files directly in `src/server`
+  // and they fell through to `web-root` — which rejected the server's own
+  // persistence imports and let a file directly in `src/client` import server
+  // code.
+  { type: 'web-server', pattern: 'apps/web/src/server/**', partialMatch: false },
+  { type: 'web-client', pattern: 'apps/web/src/client/**', partialMatch: false },
+  { type: 'web-app', pattern: 'apps/web/src/app/**', partialMatch: false },
   // shadcn/ui output: the `cn` helper and generated components.
-  { type: 'web-lib', pattern: 'apps/web/src/lib/**/*' },
-  { type: 'web-ui', pattern: 'apps/web/src/components/**/*' },
-  { type: 'web-root', pattern: 'apps/web/*' },
+  { type: 'web-lib', pattern: 'apps/web/src/lib/**', partialMatch: false },
+  { type: 'web-ui', pattern: 'apps/web/src/components/**', partialMatch: false },
+  { type: 'web-root', pattern: 'apps/web/*', partialMatch: false },
 
   { type: 'worker', pattern: 'apps/worker/**/*' },
 
@@ -80,8 +86,11 @@ const UI_PACKAGES = [
   'tw-animate-css',
 ];
 
-/** Node builtins and the test runner are available everywhere. */
-const TOOLING = [{ to: { module: { origin: 'core' } } }, ...pkg('vitest', 'vitest/*', '@vitest/*')];
+/** Node builtins and the test tooling are available everywhere. */
+const TOOLING = [
+  { to: { module: { origin: 'core' } } },
+  ...pkg('vitest', 'vitest/*', '@vitest/*', '@testing-library/*'),
+];
 
 const WORKSPACE = {
   domain: '@make-your-case/domain',
@@ -242,6 +251,13 @@ export const boundariesConfig = [
     plugins: { boundaries },
     settings: {
       'boundaries/elements': elements,
+      // `apps/web` imports without extensions (its bundler resolution has no
+      // `allowImportingTsExtensions`). The default resolver tries `.js` only,
+      // so an extensionless import of a `.ts` file went unresolved — and an
+      // unresolved import is silently exempt from every rule.
+      'import/resolver': {
+        node: { extensions: ['.ts', '.tsx', '.js', '.jsx', '.mjs'] },
+      },
     },
     rules: {
       'boundaries/dependencies': [

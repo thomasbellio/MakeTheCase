@@ -32,6 +32,10 @@ const EXPECTED = [
     why: 'web client code may import domain types only',
   },
   {
+    fixture: 'apps/web/src/app/__boundaries__/imports-persistence.boundary-fixture.ts',
+    why: 'App Router files reach persistence only through src/server',
+  },
+  {
     fixture: 'packages/persistence/src/__boundaries__/imports-pipeline.boundary-fixture.ts',
     why: 'persistence depends on domain and drizzle only',
   },

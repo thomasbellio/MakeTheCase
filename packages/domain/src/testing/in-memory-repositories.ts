@@ -36,6 +36,13 @@ import type {
 export class InMemoryDocumentRepository implements DocumentRepository {
   readonly documents = new Map<DocumentId, Document>();
 
+  /** The run fake `list` reads latest statuses from; `createInMemoryRepositories` wires this up. */
+  private readonly runs: InMemoryAnalysisRunRepository | undefined;
+
+  constructor(runs?: InMemoryAnalysisRunRepository) {
+    this.runs = runs;
+  }
+
   create(input: NewDocument): Promise<Document> {
     const document: Document = {
       id: newId<DocumentId>(),
@@ -52,14 +59,16 @@ export class InMemoryDocumentRepository implements DocumentRepository {
     return Promise.resolve(this.documents.get(id) ?? null);
   }
 
-  list(): Promise<DocumentSummary[]> {
-    return Promise.resolve(
-      [...this.documents.values()].map((d) => ({
+  async list(): Promise<DocumentSummary[]> {
+    // Newest first, as the Drizzle implementation orders them.
+    const documents = [...this.documents.values()].reverse();
+    return Promise.all(
+      documents.map(async (d) => ({
         id: d.id,
         title: d.title,
         role: d.role,
         created_at: d.created_at,
-        latest_run_status: null,
+        latest_run_status: (await this.runs?.getLatestForDocument(d.id))?.status ?? null,
       })),
     );
   }
@@ -195,6 +204,12 @@ export class InMemoryAnalysisRunRepository implements AnalysisRunRepository {
     return Promise.resolve(this.runs.get(id) ?? null);
   }
 
+  getLatestForDocument(documentId: DocumentId): Promise<AnalysisRun | null> {
+    // Map iteration is insertion order, which stands in for request time.
+    const runs = [...this.runs.values()].filter((run) => run.document_id === documentId);
+    return Promise.resolve(runs.at(-1) ?? null);
+  }
+
   appendEvent(event: NewRunEvent): Promise<RunEvent> {
     const existing = this.events.get(event.run_id) ?? [];
     const created: RunEvent = {
@@ -226,7 +241,7 @@ export function createInMemoryRepositories(): Repositories & {
   const spans = new InMemorySpanRepository();
   const runs = new InMemoryAnalysisRunRepository();
   return {
-    documents: new InMemoryDocumentRepository(),
+    documents: new InMemoryDocumentRepository(runs),
     spans,
     revisions: new InMemoryRevisionRepository(spans, runs),
     runs,

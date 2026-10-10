@@ -110,6 +110,9 @@ export const analysisRuns = pgTable(
     error: text('error'),
     startedAt: timestamp('started_at', { withTimezone: true }),
     finishedAt: timestamp('finished_at', { withTimezone: true }),
+    // When the run was requested. A queued run has no `started_at`, so this is
+    // what decides which run is a document's latest.
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index('analysis_run_document_idx').on(t.documentId),

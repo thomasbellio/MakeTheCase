@@ -93,6 +93,10 @@ Traps confirmed while scaffolding, each of which breaks a setup built from older
 - Vitest 5 deprecated `vitest.workspace.ts` in favour of `test.projects`; mocks auto-clear between tests, and unawaited async assertions now fail rather than warn.
 - Postgres 18 images expect a single volume mount at `/var/lib/postgresql`, not `/var/lib/postgresql/data`.
 - `eslint-plugin-boundaries` v7 replaced `element-types`/`external` with one `boundaries/dependencies` rule using `policies` and entity selectors.
+- Two boundaries traps that silently disabled the web rules until Phase 3. An element pattern like `src/server/**/*` matches by *parent folder*, so a file directly in `src/server` was classed `web-root`; the web elements therefore use `partialMatch: false` (the v7 replacement for `mode: 'full'`). And the default resolver tries `.js` only, so an extensionless import of a `.ts` file went unresolved, and an unresolved import is exempt from every rule; `import/resolver.node.extensions` now lists `.ts`/`.tsx`. Path aliases (`@/…`) are still unresolved, so web code uses relative imports.
+- Next reads `.env` only from `apps/web`, so `next.config.ts` loads the root `.env` with `process.loadEnvFile`. The shared Next tsconfig sets `allowImportingTsExtensions` (legal under `noEmit`), because web compiles workspace source that uses `.ts` imports.
+- MobX 7 removed `observable.ref` and friends for named exports (`observableRef`, `computedStruct`, …) and dropped legacy decorators; ViewModels use `makeAutoObservable` with an overrides map.
+- React Flow has a built-in `group` node type with its own box styling; a custom node type named `group` draws a second border. The map's group type is `party`.
 
 ---
 
@@ -204,6 +208,7 @@ interface AnalysisRunRepository {
   create(input: NewAnalysisRun): Promise<AnalysisRun>;
   updateStatus(id: RunId, update: RunStatusUpdate): Promise<void>;
   getById(id: RunId): Promise<AnalysisRun | null>;
+  getLatestForDocument(documentId: DocumentId): Promise<AnalysisRun | null>;
   appendEvent(event: NewRunEvent): Promise<RunEvent>;
   listEventsSince(runId: RunId, afterSequence: number): Promise<RunEvent[]>;
 }
@@ -407,6 +412,8 @@ Severity summary: `critical` — circularity, invalid_step, load-bearing implici
   separate `makeyourcase_test` database addressed by `TEST_DATABASE_URL`. The helper creates the
   database if absent and applies migrations before the suite (a Compose init script would not do it:
   those run only on a fresh volume).
+- `apps/web` tests run under Node like every other package; a View test opts into a DOM with a
+  `// @vitest-environment jsdom` docblock, so server and ViewModel tests cannot reach for `window`.
 - Isolation is `TRUNCATE ... RESTART IDENTITY CASCADE` between tests, deliberately **not** an outer
   transaction with savepoints — `saveArgumentGraph`'s own transaction is a thing §5.2 requires us to
   test, and wrapping it would mask commit and rollback bugs in exactly that code.
@@ -511,7 +518,7 @@ These rules go into the reconstruction prompt verbatim in substance and are test
 - `SIGINT`/`SIGTERM` stop the queue gracefully, letting an in-flight run finish, then close the checkpointer and the pool.
 - `apps/worker` has two tsconfigs: `tsconfig.json` covers `src` and `test` for typecheck and lint, and `tsconfig.build.json` is the only place `rootDir`/`outDir` appear. A lint and typecheck that skip `test/` are not worth having.
 
-### 8.6 API (`apps/web/app/api/`)
+### 8.6 API (`apps/web/src/app/api/`) — **complete**
 
 Route handlers are thin; logic lives in server-side services that depend on repository interfaces.
 
@@ -524,7 +531,12 @@ Route handlers are thin; logic lives in server-side services that depend on repo
 | `GET /api/runs/:id` | Run status. |
 | `GET /api/runs/:id/events` | Server-Sent Events stream of `RunEvent`s; supports `Last-Event-ID` resume; closes on terminal status. Polling the events table (≈500 ms) is acceptable in v1. |
 
-All request and response bodies are validated with Zod schemas shared from `packages/domain` (or a `contracts` module within it).
+All request and response bodies are validated with Zod schemas shared from `packages/domain/src/contracts/api.ts`.
+
+- **Wire format.** Entities use `z.date()`, which JSON cannot carry, so each wire schema swaps its dates for an ISO-string codec (`isoDate`). The server writes bodies with `encodeWire` and the client reads them with `decodeWire`; neither hand-converts a date, and `apps/web` needs no zod of its own (it may not import it). `ArgumentGraph` is a declared interface, so it has its own `encodeArgumentResponse`/`decodeArgumentResponse`. Entity bodies keep the domain's snake_case; the submit request and response are camelCase as the table above gives them. Every error is `{ error: { code, message } }` with `validation_failed` 400, `not_found` 404, `document_too_large` 413, `internal` 500.
+- **`GET /api/documents/:id`** returns `{ document, spans, latestRun }`. `latestRun` is how the page finds the run to stream; it is the most recently *requested* run, ordered by `analysis_run.created_at` (added for this — a queued run has no `started_at`).
+- **The SSE stream** sends one unnamed event per `RunEvent` with `id:` set to its sequence, then a named `end` event (`{ status }`) once the run is terminal, then closes. It resumes from `Last-Event-ID`, or from `?after=<sequence>` for a client reconnecting by hand (a new `EventSource` cannot set the header). Each poll reads the run's status before its events: the worker writes events before the terminal status, so a terminal read means the following poll drains everything.
+- **Composition root.** `src/server/container.ts` caches the pool and pg-boss on `globalThis` under a registered symbol, so a dev-mode reload reuses them instead of leaking a pool; services are plain functions built per request. Route files only forward to `src/server/api.ts`, which is where authentication will go. Enqueue failures mark the run `failed` with a safe message.
 
 ### 8.7 Evaluation harness — **complete**
 
@@ -667,7 +679,7 @@ the sample is too small to separate it from variance.
 ### 9.1 MVVM conventions
 
 - **Model**: domain types from `packages/domain`, obtained through a typed API client (`apps/web/src/client/api/`). The API client is the only code that calls `fetch` or opens EventSources.
-- **ViewModel**: MobX classes in `apps/web/src/viewmodels/`, one per screen or major panel. They hold observable state, expose `computed` derivations and action methods (commands), and depend on the API client via constructor injection. ViewModels contain no JSX and no DOM access.
+- **ViewModel**: MobX classes in `apps/web/src/client/viewmodels/` (under `client/`, which is the directory the import boundary protects), one per screen or major panel. They hold observable state, expose `computed` derivations and action methods (commands), and depend on the API client via constructor injection. ViewModels contain no JSX and no DOM access.
 - **View**: React components wrapped in `observer`. Views render ViewModel state and invoke ViewModel commands. No data fetching, no business logic, no derivations beyond trivial formatting.
 - ViewModels are provided through React context at the screen level and disposed on unmount (close SSE connections, dispose reactions).
 - ViewModels are unit-tested with a fake API client, without rendering.
@@ -699,6 +711,14 @@ the sample is too small to separate it from variance.
 - Must work in light and dark modes, be keyboard navigable (select nodes, move between findings), and meet WCAG AA contrast.
 
 ### 9.4 Phase 3 acceptance criteria
+
+**Status:** the automated criteria pass; the manual sweep over real fixtures is the maintainer's (§12). Implemented as `src/client/{api,model,viewmodels,views}`:
+
+- `model/` holds the pure derivations, each unit-tested: `indexArgument` (lookups, plus load-bearing and uncited sets read from the persisted findings, because the client may not import `analysis`), `highlightFor` (selection syncing as one function), `stageTimeline`, and `map-graph` (graph → map spec → ELK → React Flow).
+- **Order is computed, not stored.** `getArgumentGraph` returns rows in UUID order, so the index sorts claims into reading order (first occurrence; an inferred claim beside the claim it supports), and the map is stable across reloads with no schema change.
+- The source panel slices the submitted text at span offsets rather than rendering Markdown, so highlights land on exactly the characters segmentation measured; Markdown syntax shows as written.
+- Dark mode follows `prefers-color-scheme` (no toggle). The severity, opposing and highlight tokens in `globals.css` were checked for WCAG AA contrast in both themes.
+- `pnpm --filter @make-your-case/web seed:demo [--live]` writes a hand-built analysis (and, with `--live`, paces its events over ~10 s) with no model call, for exploring the UI without a billed run.
 
 - ViewModel unit tests for selection syncing, findings focus, SSE event handling (including reconnection and terminal states), and graph-to-React-Flow mapping.
 - Component tests for key Views using a stub ViewModel.

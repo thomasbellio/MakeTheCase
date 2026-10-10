@@ -1,4 +1,4 @@
-# Local development only: Postgres. The apps run on the host via `pnpm dev`.
+# Local development only: Postgres + DbGate. The apps run on the host via `pnpm dev`.
 # See AGENTS.md section 2 - production deployment manifests are out of scope.
 name: make-your-case
 
@@ -22,5 +22,33 @@ services:
       timeout: 5s
       retries: 10
 
+  dbgate:
+    image: dbgate/dbgate:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      # Host port 3100 to avoid clashing with `pnpm dev` (often on 3000).
+      - '3100:3000'
+    environment:
+      # DbGate web UI login (local dev only).
+      LOGIN: makeyourcase
+      PASSWORD: makeyourcase
+
+      # Preconfigured connection to the postgres service.
+      CONNECTIONS: pg
+      LABEL_pg: make-your-case (local)
+      ENGINE_pg: postgres@dbgate-plugin-postgres
+      SERVER_pg: postgres
+      PORT_pg: 5432
+      USER_pg: makeyourcase
+      PASSWORD_pg: makeyourcase
+      DATABASE_pg: makeyourcase
+    volumes:
+      # Persists saved queries, settings, etc.
+      - dbgate-data:/root/.dbgate
+
 volumes:
   pgdata:
+  dbgate-data:

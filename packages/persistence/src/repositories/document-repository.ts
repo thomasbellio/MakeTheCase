@@ -39,12 +39,14 @@ export class DrizzleDocumentRepository implements DocumentRepository {
   }
 
   async list(): Promise<DocumentSummary[]> {
-    // The status of each document's most recent run, by a lateral subquery so
-    // one document with many runs still yields one row.
+    // The status of each document's most recent run, by a correlated subquery
+    // so one document with many runs still yields one row. The outer column is
+    // qualified by hand: interpolating `documents.id` renders a bare "id",
+    // which inside the subquery resolves to `r.id` and never matches.
     const latestStatus = sql<string | null>`(
       select r.status from ${analysisRuns} r
-      where r.document_id = ${documents.id}
-      order by r.started_at desc nulls last, r.id desc
+      where r.document_id = ${documents}.${sql.identifier(documents.id.name)}
+      order by r.created_at desc, r.id desc
       limit 1
     )`;
 

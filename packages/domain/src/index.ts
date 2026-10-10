@@ -19,3 +19,5 @@ export * from './graph/materialize.ts';
 
 export * from './jobs/analyze-document.ts';
 export * from './repositories/index.ts';
+
+export * from './contracts/api.ts';

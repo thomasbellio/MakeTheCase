@@ -9,6 +9,7 @@
     "types": ["node"],
     "jsx": "preserve",
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "declaration": false,
     "declarationMap": false,
     "allowJs": true,

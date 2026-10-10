@@ -1,6 +1,6 @@
 # Progress
 
-A status snapshot, last updated **2026-10-09**.
+A status snapshot, last updated **2026-10-10**.
 
 `AGENTS.md` is the specification and the authority on every decision; this file only records where
 the work has got to. If the two disagree, `AGENTS.md` is right and this file is stale.
@@ -10,28 +10,22 @@ the work has got to. If the two disagree, `AGENTS.md` is right and this file is 
 | Phase | State |
 |---|---|
 | **Phase 1** — domain model, analysis engine, persistence (§7) | Complete |
-| **Phase 2** — LLM integration (§8) | Provider abstraction, workflow, worker and eval harness complete. API (§8.6) not started. Prompt quality (§8.8) open. |
-| **Phase 3** — UI (§9) | Not started |
+| **Phase 2** — LLM integration (§8) | Complete except prompt quality (§8.8), which needs a billed sweep. |
+| **Phase 3** — UI (§9) | Built; automated criteria pass. The manual fixture sweep (§9.4) is the maintainer's. |
 
-303 tests pass. Analysis coverage is 98.6% statements / 99.3% lines, against §7.5's 90% bar.
+Unit tests: 431 pass (`pnpm test`), plus 15 integration tests (`pnpm test:db`). Analysis coverage
+was 98.6% statements at the last measurement, against §7.5's 90% bar.
 
 | Workspace | Tests |
 |---|---|
+| `apps/web` | 123 |
 | `packages/analysis` | 103 |
 | `packages/pipeline` | 95 |
 | `packages/answer-keys` | 37 |
+| `packages/domain` | 22 |
 | `apps/worker` | 19 |
 | `tools/eval` | 18 |
-| `packages/domain` | 17 |
-| `packages/persistence` | 14 |
-
-### ⚠️ Uncommitted
-
-The whole of §8.5 (the worker) is working but **not committed** — `apps/worker/src/{handle-job,
-progress-reporter,run-lifecycle}.ts`, `apps/worker/test/`, `apps/worker/tsconfig.build.json`,
-`packages/domain/src/jobs/`, `packages/pipeline/src/testing/memory-checkpointer.ts`, plus edits to
-`AGENTS.md`, the boundaries config and two barrels. All gates pass against it. Commit before
-starting anything new.
+| `packages/persistence` | 14 (+13 integration) |
 
 ## What is implemented
 
@@ -71,9 +65,19 @@ implementation — plus the judge, the `pnpm eval` CLI and the report. `--repeat
 because the pipeline is non-deterministic enough that a single run cannot tell an improvement from
 variance.
 
+**The API (§8.6) and the UI (§9)** — see AGENTS.md §8.6 and §9.4 for the decisions. Wire contracts
+in `domain/src/contracts`, a pool-safe composition root, six thin routes, an SSE stream with
+`Last-Event-ID`/`?after=` resume, the MVVM client, and a `seed:demo` script for looking at the UI
+with no model call. Verified against Postgres (curl, including a live SSE stream and resume) and by
+rendering both a seeded and a real eval-produced revision in headless Chromium, in light and dark.
+
+Bugs found and fixed on the way: `DocumentRepository.list` never reported a run status (its
+correlated subquery compared `r.document_id` with `r.id`); and two boundaries misconfigurations had
+silently exempted most `apps/web` imports from the import rules (AGENTS.md §3).
+
 ## What is left
 
-### 1. The API (§8.6) — next up, fully specified, no model calls needed
+### 1. ~~The API (§8.6)~~ — done; notes kept for history
 
 Six route handlers (`POST /api/documents`, `GET /api/documents`, `GET /api/documents/:id`,
 `GET /api/documents/:id/argument`, `GET /api/runs/:id`, `GET /api/runs/:id/events`), and everything
@@ -110,18 +114,25 @@ so this needs a human sweep to characterise. Current baseline: fixture 01 at **0
 - **`reconstruct@2` is unproven.** Guidance for choosing a claim's `kind` was added because the
   analyzer was demanding a citation for date arithmetic. Sample too small to separate from variance.
 
-### 3. Phase 3 — the UI (§9)
+### 3. Phase 3 — the manual sweep (§9.4)
 
-Untouched and the largest remaining block. The landing page is still the stock create-next-app
-template. No API client, no ViewModels, no argument map. React Flow, ELK, MobX and shadcn/ui are
-installed but unused.
+Run the worker against a real model, submit each fixture, and check live progress, span ↔ claim
+highlighting, inferred marking and the opposing group; fixtures 11 and 12 should show the
+non-argument summary. Billed, so the maintainer's. Things worth watching:
+
+- A real eval revision for fixture 05 put an intermediate conclusion above the thesis on the map — the
+  model chose a sub-conclusion as `is_thesis`. A pipeline signal for §8.8, not a UI defect.
+- Wide arguments lay out wide (the ground layer spreads horizontally), so fit-to-view zooms out.
+  Readable, but a candidate for tuning ELK spacing once real briefs are on screen.
+- Node heights are estimated from text length, not measured; an unusually long word could overflow.
 
 ### 4. Smaller items
 
 - Fixtures 01 and 02 carry the dead `linked`/`convergent` vocabulary in their filenames and notes.
   `id` must match the file stem, so renaming is a coordinated change.
 - `getArgumentGraph` orders rows by UUID, so a saved graph comes back in a different order on every
-  read. Phase 3's map and any diffing will care. Needs an ordinal column or a deterministic sort.
+  read. The UI now sorts into reading order itself, so the map is stable; diffing revisions would
+  still want an ordinal column.
 - `inference_premise` has no ordinal, so premise order is not actually persisted — despite a
   `toView` comment in `domain` claiming it is. Nothing depends on it today because
   `deductive-validity` pairs through `formalization.atoms`, but the comment invites a future analyzer
@@ -152,7 +163,8 @@ installed but unused.
 pnpm install
 cp .env.example .env
 pnpm db:up && pnpm db:migrate     # migrations are explicit; a fresh clone has an empty database
-pnpm dev                          # http://localhost:3000 (still the stock Next.js page)
+pnpm dev                          # http://localhost:3000
+pnpm --filter @make-your-case/web seed:demo   # a demo analysis, no model call
 ```
 
 Gates, all of which currently pass:
