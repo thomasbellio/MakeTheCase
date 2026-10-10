@@ -9,6 +9,7 @@ pnpm-lock.yaml
 # tables and list spacing, which buries real edits in whitespace churn.
 AGENTS.md
 README.md
+progress.md
 docs/
 fixtures/
 

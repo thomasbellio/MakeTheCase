@@ -1,8 +1,9 @@
 {
   "extends": "@make-your-case/config/tsconfig/library.json",
   "compilerOptions": {
-    "rootDir": "src",
-    "outDir": "dist"
+    // Typecheck and lint cover the tests too; emit is `tsconfig.build.json`,
+    // which is the only place rootDir/outDir belong.
+    "noEmit": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts"]
 }

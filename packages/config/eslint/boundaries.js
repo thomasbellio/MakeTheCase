@@ -152,6 +152,7 @@ const policies = [
         WORKSPACE.persistence,
         WORKSPACE.pipeline,
         '@make-your-case/domain/testing',
+        '@make-your-case/pipeline/testing',
         'pg-boss',
       ),
     ],

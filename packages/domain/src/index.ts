@@ -17,4 +17,5 @@ export * from './graph/view.ts';
 export * from './graph/argument-graph.ts';
 export * from './graph/materialize.ts';
 
+export * from './jobs/analyze-document.ts';
 export * from './repositories/index.ts';

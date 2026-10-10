@@ -498,10 +498,18 @@ These rules go into the reconstruction prompt verbatim in substance and are test
 - Validation retries emit `validation_retry` with the error count; failures emit `run_failed` with a user-safe message.
 - Event payloads must be safe to show users: no raw prompts, no API keys, no stack traces.
 
-### 8.5 Worker (`apps/worker`)
+### 8.5 Worker (`apps/worker`) — **complete**
 
-- pg-boss consumer for `analyze-document` jobs. Composition root: builds repositories, provider factory, and progress reporter, and runs the workflow.
-- Handles graceful shutdown; marks runs `failed` on unrecoverable errors.
+- pg-boss consumer for `analyze-document` jobs. Composition root: it owns the database pool, the model provider, the Postgres checkpointer and the queue, builds the repositories, and closes all of them in order.
+- **The queue contract lives in `domain`** (`ANALYZE_DOCUMENT_QUEUE`, `analyzeDocumentJobSchema`), because both sides need it and neither can reach the other: `apps/web` enqueues but may not import `pipeline` (§4). Only identifiers travel on the queue — the document text is already in the database and immutable, so sending it would duplicate it and put the user's document in the job table. A payload is parsed on arrival: it round-trips through JSON and may have been enqueued by an older build.
+- pg-boss 12 notes: the package is ESM with a **named** `PgBoss` export, `createQueue` must be called before a queue is worked, and a work handler receives a **batch** (`Job<T>[]`). The handler iterates the batch rather than taking `jobs[0]`, so raising the batch size later cannot silently drop work.
+- `handleAnalyzeDocument` is separate from the queue plumbing so it can be tested with in-memory repositories and a `FakeModelProvider`, with no queue and no database.
+- **The run's lifecycle belongs here, not to the pipeline.** `createAnalysisWorkflow` is given only `saveAnalysisResult`, so nothing in `pipeline` sets a run's status, timestamps or `model_config` — before this, every run stayed `queued` for ever. `run-lifecycle.ts` marks a run `running` with its `started_at` and `model_config`, and maps each `AnalysisOutcome` onto its terminal state.
+- `DatabaseProgressReporter` implements §8.4: every pipeline event becomes a `RunEvent` row and `current_stage` moves as each stage starts. `appendEvent` assigns the monotonic sequence in SQL, so the SSE stream can resume from `Last-Event-ID` without the reporter tracking position.
+- A redelivered job whose run already finished does nothing: repeating it would spend money and duplicate the events a client is watching.
+- An unexpected failure (a provider outage, output that never matches the schema) fails the run with a fixed, uninformative message and logs the detail. The error is **rethrown** so the queue records the job as failed; the checkpoint means a redelivery resumes rather than repeating paid work.
+- `SIGINT`/`SIGTERM` stop the queue gracefully, letting an in-flight run finish, then close the checkpointer and the pool.
+- `apps/worker` has two tsconfigs: `tsconfig.json` covers `src` and `test` for typecheck and lint, and `tsconfig.build.json` is the only place `rootDir`/`outDir` appear. A lint and typecheck that skip `test/` are not worth having.
 
 ### 8.6 API (`apps/web/app/api/`)
 
